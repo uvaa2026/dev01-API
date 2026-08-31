@@ -13,6 +13,10 @@ adminRouter.use(requireAuth, requireAdmin)
 // ---------------------------------------------------------------------------
 // GET /admin/users — every registered respondent, with a per-assessment
 // completion flag (today: just Guna). Ordered newest-registration-first.
+// Excludes the signed-in admin's own account — an admin manages other
+// respondents, not themselves, so their own row would just be noise (and
+// confusing, since an admin account is also a normal respondent underneath
+// and could otherwise show up looking like "just another user").
 // ---------------------------------------------------------------------------
 adminRouter.get('/users', asyncHandler(async (req, res) => {
   const result = await pool.query(
@@ -24,7 +28,9 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
      JOIN organisations o ON o.org_id = r.organisation_id
      JOIN user_credentials uc ON uc.respondent_id = r.respondent_id
      LEFT JOIN guna_responses gr ON gr.respondent_id = r.respondent_id
+     WHERE r.respondent_id != $1
      ORDER BY r.created_at DESC`,
+    [req.user.sub],
   )
 
   const users = result.rows.map((row) => ({
@@ -52,6 +58,10 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
 // come online — same shape, new key).
 // ---------------------------------------------------------------------------
 adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
+  if (req.params.id === req.user.sub) {
+    return res.status(403).json({ message: 'Admins do not manage their own account from here.' })
+  }
+
   const result = await pool.query(
     `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.career_stage_code,
             r.experience_range, r.department, r.created_at, o.name AS organisation_name,
@@ -97,6 +107,10 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
 // the database — never exposed to the respondent themselves.
 // ---------------------------------------------------------------------------
 adminRouter.get('/users/:id/guna', asyncHandler(async (req, res) => {
+  if (req.params.id === req.user.sub) {
+    return res.status(403).json({ message: 'Admins do not manage their own account from here.' })
+  }
+
   const result = await pool.query(
     `SELECT answers, submitted_at, sattva_count, rajas_count, tamas_count,
             dominance, provisional, tpe_raw, tpe_index, scored_at
