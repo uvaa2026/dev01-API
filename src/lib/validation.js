@@ -88,6 +88,95 @@ export const gunaSubmissionSchema = z.object({
     }),
 })
 
+// A partial, in-progress Guna submission — used by the save-draft endpoint
+// (PATCH /assessment/guna/draft) so a respondent can leave mid-quiz and
+// resume later (FR-17). Deliberately loose compared to gunaSubmissionSchema:
+// any subset of the 15 ids, in any order, no duplicates — a draft is
+// allowed to be incomplete by definition.
+export const gunaDraftSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        vignetteId: z.enum(GUNA_VIGNETTE_IDS),
+        optionKey: z.enum(['A', 'B', 'C']),
+      }),
+    )
+    .max(GUNA_VIGNETTE_IDS.length)
+    .superRefine((answers, ctx) => {
+      const seen = new Set()
+      for (const a of answers) {
+        if (seen.has(a.vignetteId)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate answer for ${a.vignetteId}` })
+        }
+        seen.add(a.vignetteId)
+      }
+    }),
+  currentIndex: z.number().int().min(0).max(GUNA_VIGNETTE_IDS.length - 1).optional().default(0),
+})
+
+// The 32 Construct/ECM scenario ids ("TCM" in product shorthand). Duplicated
+// from uvaa-webapp/src/data/constructScenarios.js rather than shared — keep
+// both lists identical if a scenario is ever added, removed, or renamed
+// (same convention as GUNA_VIGNETTE_IDS above).
+export const CONSTRUCT_SCENARIO_IDS = [
+  'up-01', 'up-02', 'up-03', 'up-04', 'up-05', 'up-06', 'up-07', 'up-08',
+  'an-01', 'an-02', 'an-03', 'an-04', 'an-05', 'an-06', 'an-07', 'an-08',
+  'ak-01', 'ak-02', 'ak-03', 'ak-04', 'ak-05', 'ak-06', 'ak-07', 'ak-08',
+  'vk-01', 'vk-02', 'vk-03', 'vk-04', 'vk-05', 'vk-06', 'vk-07', 'vk-08',
+]
+
+// A submission must answer every scenario exactly once, each with a valid
+// option key — no partial submissions, no unknown scenario ids, no
+// duplicates. Order doesn't matter; the set has to match exactly. Mirrors
+// gunaSubmissionSchema, four options (A-D) instead of three.
+export const constructSubmissionSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        scenarioId: z.enum(CONSTRUCT_SCENARIO_IDS),
+        optionKey: z.enum(['A', 'B', 'C', 'D']),
+      }),
+    )
+    .length(CONSTRUCT_SCENARIO_IDS.length, `All ${CONSTRUCT_SCENARIO_IDS.length} questions must be answered`)
+    .superRefine((answers, ctx) => {
+      const seen = new Set()
+      for (const a of answers) {
+        if (seen.has(a.scenarioId)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate answer for ${a.scenarioId}` })
+        }
+        seen.add(a.scenarioId)
+      }
+      for (const id of CONSTRUCT_SCENARIO_IDS) {
+        if (!seen.has(id)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Missing answer for ${id}` })
+        }
+      }
+    }),
+})
+
+// Partial, in-progress Construct submission — same relationship to
+// constructSubmissionSchema as gunaDraftSchema has to gunaSubmissionSchema.
+export const constructDraftSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        scenarioId: z.enum(CONSTRUCT_SCENARIO_IDS),
+        optionKey: z.enum(['A', 'B', 'C', 'D']),
+      }),
+    )
+    .max(CONSTRUCT_SCENARIO_IDS.length)
+    .superRefine((answers, ctx) => {
+      const seen = new Set()
+      for (const a of answers) {
+        if (seen.has(a.scenarioId)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate answer for ${a.scenarioId}` })
+        }
+        seen.add(a.scenarioId)
+      }
+    }),
+  currentIndex: z.number().int().min(0).max(CONSTRUCT_SCENARIO_IDS.length - 1).optional().default(0),
+})
+
 // Turns a ZodError into { field: message } the frontend can render next to
 // the relevant input, rather than a flat list.
 export function formatZodError(error) {

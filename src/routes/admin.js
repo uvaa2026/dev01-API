@@ -4,6 +4,8 @@ import { requireAuth } from '../middleware/requireAuth.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { GUNA_VIGNETTES } from '../data/gunaVignettes.js'
+import { CONSTRUCT_SCENARIOS } from '../data/constructScenarios.js'
+import { computePattern, DIMENSION_RAW_COLUMN } from '../lib/scoring.js'
 
 export const adminRouter = Router()
 
@@ -23,11 +25,14 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
     `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.career_stage_code,
             r.experience_range, r.created_at, o.name AS organisation_name,
             uc.is_email_verified, uc.last_login_at,
-            gr.submitted_at AS guna_submitted_at
+            gr.submitted_at AS guna_submitted_at,
+            cr.submitted_at AS construct_submitted_at,
+            (gr.scored_at IS NOT NULL AND cr.scored_at IS NOT NULL) AS report_ready
      FROM respondents r
      JOIN organisations o ON o.org_id = r.organisation_id
      JOIN user_credentials uc ON uc.respondent_id = r.respondent_id
      LEFT JOIN guna_responses gr ON gr.respondent_id = r.respondent_id
+     LEFT JOIN construct_responses cr ON cr.respondent_id = r.respondent_id
      WHERE r.respondent_id != $1
      ORDER BY r.created_at DESC`,
     [req.user.sub],
@@ -46,7 +51,9 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
     createdAt: row.created_at,
     assessments: {
       guna: { submitted: Boolean(row.guna_submitted_at), submittedAt: row.guna_submitted_at },
+      construct: { submitted: Boolean(row.construct_submitted_at), submittedAt: row.construct_submitted_at },
     },
+    reportReady: row.report_ready,
   }))
 
   return res.status(200).json({ users })
@@ -66,11 +73,14 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
     `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.career_stage_code,
             r.experience_range, r.department, r.created_at, o.name AS organisation_name,
             uc.is_email_verified, uc.last_login_at,
-            gr.submitted_at AS guna_submitted_at
+            gr.submitted_at AS guna_submitted_at,
+            cr.submitted_at AS construct_submitted_at,
+            (gr.scored_at IS NOT NULL AND cr.scored_at IS NOT NULL) AS report_ready
      FROM respondents r
      JOIN organisations o ON o.org_id = r.organisation_id
      JOIN user_credentials uc ON uc.respondent_id = r.respondent_id
      LEFT JOIN guna_responses gr ON gr.respondent_id = r.respondent_id
+     LEFT JOIN construct_responses cr ON cr.respondent_id = r.respondent_id
      WHERE r.respondent_id = $1`,
     [req.params.id],
   )
@@ -96,7 +106,9 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
     },
     assessments: {
       guna: { submitted: Boolean(row.guna_submitted_at), submittedAt: row.guna_submitted_at },
+      construct: { submitted: Boolean(row.construct_submitted_at), submittedAt: row.construct_submitted_at },
     },
+    reportReady: row.report_ready,
   })
 }))
 
@@ -156,5 +168,142 @@ adminRouter.get('/users/:id/guna', asyncHandler(async (req, res) => {
       tpeIndex: row.tpe_index !== null ? Number(row.tpe_index) : null,
     },
     review,
+  })
+}))
+
+// ---------------------------------------------------------------------------
+// GET /admin/users/:id/construct — mirrors /guna above: the computed DQI /
+// dimension result plus a per-scenario review (situation + all four options
+// next to what this respondent picked). Never exposed to the respondent.
+// ---------------------------------------------------------------------------
+adminRouter.get('/users/:id/construct', asyncHandler(async (req, res) => {
+  if (req.params.id === req.user.sub) {
+    return res.status(403).json({ message: 'Admins do not manage their own account from here.' })
+  }
+
+  const result = await pool.query(
+    `SELECT answers, submitted_at, upeksha_raw, anuvigna_raw, anasakti_raw, viveka_raw,
+            dqi_raw, dqi_pct, dqi_band, scored_at
+     FROM construct_responses
+     WHERE respondent_id = $1`,
+    [req.params.id],
+  )
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({ message: 'This respondent has not completed the Construct assessment yet.' })
+  }
+
+  const row = result.rows[0]
+  const selectedKeyByScenario = new Map(row.answers.map((a) => [a.scenarioId, a.optionKey]))
+
+  const dimensionRaw = {}
+  const dimensionPct = {}
+  for (const [dim, col] of Object.entries(DIMENSION_RAW_COLUMN)) {
+    dimensionRaw[dim] = row[col]
+    dimensionPct[dim] = Math.round((((row[col] - 8) / 16) * 100) * 100) / 100
+  }
+
+  const review = CONSTRUCT_SCENARIOS.map((s) => {
+    const selectedKey = selectedKeyByScenario.get(s.id) || null
+    const selectedOption = s.options.find((o) => o.key === selectedKey) || null
+    return {
+      scenarioId: s.id,
+      dimension: s.dimension,
+      situation: s.situation,
+      options: s.options.map((o) => ({ key: o.key, text: o.text, score: o.score })),
+      selectedKey,
+      selectedScore: selectedOption?.score ?? null,
+    }
+  })
+
+  return res.status(200).json({
+    submittedAt: row.submitted_at,
+    scoredAt: row.scored_at,
+    result: {
+      dimensionRaw,
+      dimensionPct,
+      dqiRaw: row.dqi_raw,
+      dqiPct: row.dqi_pct !== null ? Number(row.dqi_pct) : null,
+      dqiBand: row.dqi_band,
+    },
+    review,
+  })
+}))
+
+// ---------------------------------------------------------------------------
+// GET /admin/users/:id/report — the full facilitator view (Screen Flow
+// S13): everything the respondent's own report shows, PLUS guna
+// percentages/dominance, the research-only TPE index, and the pattern name
+// even when provisional (with the provisional flag so the UI can label it
+// as such rather than hide it, per section 5.3: "the facilitator report
+// notes the lean").
+// ---------------------------------------------------------------------------
+adminRouter.get('/users/:id/report', asyncHandler(async (req, res) => {
+  if (req.params.id === req.user.sub) {
+    return res.status(403).json({ message: 'Admins do not manage their own account from here.' })
+  }
+
+  const result = await pool.query(
+    `SELECT g.sattva_count, g.rajas_count, g.tamas_count, g.dominance, g.provisional,
+            g.tpe_raw, g.tpe_index, g.scored_at AS guna_scored_at,
+            c.upeksha_raw, c.anuvigna_raw, c.anasakti_raw, c.viveka_raw,
+            c.dqi_raw, c.dqi_pct, c.dqi_band, c.scored_at AS construct_scored_at
+     FROM respondents r
+     LEFT JOIN guna_responses g ON g.respondent_id = r.respondent_id
+     LEFT JOIN construct_responses c ON c.respondent_id = r.respondent_id
+     WHERE r.respondent_id = $1`,
+    [req.params.id],
+  )
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({ message: 'Respondent not found.' })
+  }
+
+  const row = result.rows[0]
+  if (!row.guna_scored_at || !row.construct_scored_at) {
+    return res.status(200).json({
+      ready: false,
+      message: !row.guna_scored_at
+        ? 'Guna profiler not completed yet.'
+        : 'Construct assessment not completed yet.',
+    })
+  }
+
+  const dimensionPct = {}
+  const dimensionDeficient = {}
+  for (const [dim, col] of Object.entries(DIMENSION_RAW_COLUMN)) {
+    const raw = row[col]
+    const pct = Math.round((((raw - 8) / 16) * 100) * 100) / 100
+    dimensionPct[dim] = pct
+    dimensionDeficient[dim] = pct < 67
+  }
+
+  const pattern = computePattern(
+    { dominance: row.dominance, provisional: row.provisional },
+    { dqiBand: row.dqi_band, dimensionPct },
+  )
+
+  return res.status(200).json({
+    ready: true,
+    guna: {
+      sattvaCount: row.sattva_count,
+      rajasCount: row.rajas_count,
+      tamasCount: row.tamas_count,
+      dominance: row.dominance,
+      provisional: row.provisional,
+      tpeRaw: row.tpe_raw,
+      tpeIndex: row.tpe_index !== null ? Number(row.tpe_index) : null,
+    },
+    dqi: { raw: row.dqi_raw, pct: Number(row.dqi_pct), band: row.dqi_band },
+    dimensions: Object.fromEntries(
+      Object.keys(DIMENSION_RAW_COLUMN).map((dim) => [dim, { pct: dimensionPct[dim], deficient: dimensionDeficient[dim] }]),
+    ),
+    pattern: {
+      label: pattern.label,
+      meaning: pattern.meaning,
+      provisional: pattern.provisional,
+      steppedDown: pattern.steppedDown,
+    },
+    needsFacilitatorReview: pattern.patternKey === 'TAMAS_ANCHORED',
   })
 }))
