@@ -9,7 +9,19 @@ import {
   constructDraftSchema,
   formatZodError,
 } from '../lib/validation.js'
-import { computeTpe, computeConstruct, computePattern, DIMENSION_RAW_COLUMN } from '../lib/scoring.js'
+import {
+  computeTpe,
+  computeConstruct,
+  computePattern,
+  DIMENSION_RAW_COLUMN,
+  CAPACITY_NAME,
+  classifyCapacityBand,
+  capacityLine,
+  buildOrientationMarginNote,
+  GUNA_DOMINANCE_PROFILE,
+  DQI_BAND_CALLOUT,
+  buildDevelopmentFocus,
+} from '../lib/scoring.js'
 
 export const assessmentRouter = Router()
 
@@ -323,15 +335,24 @@ assessmentRouter.post('/construct', asyncHandler(async (req, res) => {
 }))
 
 // ---------------------------------------------------------------------------
-// REPORT — read-only, respondent-facing. Only exists once BOTH stages are
-// scored (Screen Flow: "TPE complete, ECM not -> No output produced...
-// Session remains open until the resume window expires"). Never exposes
-// Guna counts/percentages or the research-only TPE index — those stay
-// facilitator/admin-only (see routes/admin.js), matching FR-09.
+// REPORT — read-only, respondent-facing, structured to match
+// UVAA_Report_V4_050926.docx exactly: five sections (About / Core
+// Orientation / Decision Quality Under Pressure / Your UVAA Pattern /
+// Development Focus). Only exists once BOTH stages are scored (Screen Flow:
+// "TPE complete, ECM not -> No output produced... Session remains open
+// until the resume window expires"). Guna dominance and its percentages ARE
+// shown here (report spec section 2) — this is the one place they surface
+// to the respondent; they still never appear before or during either
+// assessment (FR-09). The research-only TPE index and the raw guna
+// dominance_provisional flag stay facilitator/admin-only (see
+// routes/admin.js) — the report spec's own data table says as much
+// ("dominance_provisional: Facilitator view only. Does not affect the
+// participant report").
 // ---------------------------------------------------------------------------
 assessmentRouter.get('/report', asyncHandler(async (req, res) => {
   const result = await pool.query(
-    `SELECT g.dominance, g.provisional, g.scored_at AS guna_scored_at,
+    `SELECT g.dominance, g.provisional, g.sattva_count, g.rajas_count, g.tamas_count,
+            g.scored_at AS guna_scored_at,
             c.upeksha_raw, c.anuvigna_raw, c.anasakti_raw, c.viveka_raw,
             c.dqi_raw, c.dqi_pct, c.dqi_band, c.scored_at AS construct_scored_at
      FROM respondents r
@@ -347,30 +368,69 @@ assessmentRouter.get('/report', asyncHandler(async (req, res) => {
   }
 
   const dimensionPct = {}
-  const dimensionDeficient = {}
   for (const [dim, col] of Object.entries(DIMENSION_RAW_COLUMN)) {
-    const raw = row[col]
-    const pct = Math.round((((raw - 8) / 16) * 100) * 100) / 100
-    dimensionPct[dim] = pct
-    dimensionDeficient[dim] = pct < 67
+    dimensionPct[dim] = Math.round((((row[col] - 8) / 16) * 100) * 100) / 100
   }
+
+  const sattvaCount = row.sattva_count
+  const rajasCount = row.rajas_count
+  const tamasCount = row.tamas_count
+  const sattvaPct = Math.round((sattvaCount / 15) * 100)
+  const rajasPct = Math.round((rajasCount / 15) * 100)
+  const tamasPct = Math.round((tamasCount / 15) * 100)
 
   const construct = { dqiBand: row.dqi_band, dimensionPct }
   const pattern = computePattern({ dominance: row.dominance, provisional: row.provisional }, construct)
 
-  return res.status(200).json({
+  // Section 3 chart rule: capacity bars run highest at the top.
+  const capacities = Object.keys(DIMENSION_RAW_COLUMN)
+    .map((dim) => ({
+      dimension: dim,
+      name: CAPACITY_NAME[dim],
+      pct: dimensionPct[dim],
+      band: classifyCapacityBand(dimensionPct[dim]),
+      line: capacityLine(dim, dimensionPct[dim]),
+    }))
+    .sort((a, b) => b.pct - a.pct)
+
+  const response = {
     ready: true,
-    dqi: { raw: row.dqi_raw, pct: Number(row.dqi_pct), band: row.dqi_band },
-    dimensions: Object.fromEntries(
-      Object.keys(DIMENSION_RAW_COLUMN).map((dim) => [dim, { pct: dimensionPct[dim], deficient: dimensionDeficient[dim] }]),
-    ),
-    // Per Scoring Guide v5 5.3: a provisional pattern's NAME is omitted from
-    // the participant report (construct scores and DQI still show above).
-    pattern: pattern.provisional
-      ? { label: null, meaning: null, provisional: true }
-      : { label: pattern.label, meaning: pattern.meaning, provisional: false },
-    // Per 10.3: "Reserved and decisive" (Tamas + Anchored) prints no plan —
-    // the report ends with a note that a facilitator will be in touch.
-    needsFacilitatorReview: pattern.patternKey === 'TAMAS_ANCHORED',
-  })
+    // "Held pattern" rendering rule: Reserved but steady (Tamas + Anchored)
+    // ends the report after section 3 — sections 4/5 are simply absent from
+    // this payload below, and the frontend shows a one-line facilitator
+    // note in their place.
+    heldPattern: pattern.heldPattern,
+    orientation: {
+      dominance: row.dominance,
+      dominanceName: GUNA_DOMINANCE_PROFILE[row.dominance].name,
+      sattvaPct,
+      rajasPct,
+      tamasPct,
+      profile: GUNA_DOMINANCE_PROFILE[row.dominance],
+      marginNote: buildOrientationMarginNote({ sattvaPct, rajasPct, tamasPct, sattvaCount, rajasCount, tamasCount }),
+    },
+    dqi: {
+      raw: row.dqi_raw,
+      pct: Number(row.dqi_pct),
+      band: row.dqi_band,
+      callout: DQI_BAND_CALLOUT[row.dqi_band],
+    },
+    capacities,
+  }
+
+  if (pattern.heldPattern) {
+    return res.status(200).json(response)
+  }
+
+  response.pattern = {
+    patternKey: pattern.patternKey,
+    label: pattern.label,
+    description: pattern.description,
+    whatHolds: pattern.whatHolds,
+    developmentFocus: pattern.developmentFocus,
+    patternBand: pattern.patternBand,
+  }
+  response.developmentFocus = buildDevelopmentFocus(dimensionPct)
+
+  return res.status(200).json(response)
 }))

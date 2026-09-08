@@ -5,7 +5,7 @@ import { requireAdmin } from '../middleware/requireAdmin.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { GUNA_VIGNETTES } from '../data/gunaVignettes.js'
 import { CONSTRUCT_SCENARIOS } from '../data/constructScenarios.js'
-import { computePattern, DIMENSION_RAW_COLUMN } from '../lib/scoring.js'
+import { computePattern, DIMENSION_RAW_COLUMN, CAPACITY_NAME, classifyCapacityBand, capacityLine } from '../lib/scoring.js'
 
 export const adminRouter = Router()
 
@@ -283,12 +283,26 @@ adminRouter.get('/users/:id/report', asyncHandler(async (req, res) => {
     { dqiBand: row.dqi_band, dimensionPct },
   )
 
+  const capacities = Object.keys(DIMENSION_RAW_COLUMN)
+    .map((dim) => ({
+      dimension: dim,
+      name: CAPACITY_NAME[dim],
+      pct: dimensionPct[dim],
+      deficient: dimensionDeficient[dim],
+      band: classifyCapacityBand(dimensionPct[dim]),
+      line: capacityLine(dim, dimensionPct[dim]),
+    }))
+    .sort((a, b) => b.pct - a.pct)
+
   return res.status(200).json({
     ready: true,
     guna: {
       sattvaCount: row.sattva_count,
       rajasCount: row.rajas_count,
       tamasCount: row.tamas_count,
+      sattvaPct: Math.round((row.sattva_count / 15) * 100),
+      rajasPct: Math.round((row.rajas_count / 15) * 100),
+      tamasPct: Math.round((row.tamas_count / 15) * 100),
       dominance: row.dominance,
       provisional: row.provisional,
       tpeRaw: row.tpe_raw,
@@ -298,12 +312,22 @@ adminRouter.get('/users/:id/report', asyncHandler(async (req, res) => {
     dimensions: Object.fromEntries(
       Object.keys(DIMENSION_RAW_COLUMN).map((dim) => [dim, { pct: dimensionPct[dim], deficient: dimensionDeficient[dim] }]),
     ),
+    capacities,
+    // Same nine-cell copy the participant report uses (report spec 4.2) —
+    // shown here in full regardless of provisional/heldPattern, since the
+    // facilitator view is exempt from both the "held pattern ends the
+    // report" and "provisional omits the label" rules that shape the
+    // participant-facing route.
     pattern: {
+      patternKey: pattern.patternKey,
       label: pattern.label,
-      meaning: pattern.meaning,
+      description: pattern.description,
+      whatHolds: pattern.whatHolds,
+      developmentFocus: pattern.developmentFocus,
+      patternBand: pattern.patternBand,
       provisional: pattern.provisional,
       steppedDown: pattern.steppedDown,
     },
-    needsFacilitatorReview: pattern.patternKey === 'TAMAS_ANCHORED',
+    needsFacilitatorReview: pattern.heldPattern,
   })
 }))
