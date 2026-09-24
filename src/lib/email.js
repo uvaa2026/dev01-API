@@ -49,6 +49,28 @@ export async function sendVerificationEmail({ to, fullName, verifyUrl }) {
   return info
 }
 
+export async function sendCohortCodeEmail({ to, fullName, orgName, cohortCode }) {
+  const info = await getTransporter().sendMail({
+    from: config.smtp.from,
+    to,
+    subject: `${orgName}'s UVAA cohort code is ready`,
+    text: `Hi ${fullName},\n\n${orgName} is now verified on UVAA. Share this cohort code with your participants so they can register:\n\n${cohortCode}\n\nThey'll enter it, along with their own email address, on the UVAA registration page. Keep this code only as private as your registration settings require — anyone who does not have a matching work-email domain configured will be able to register with just this code.`,
+    html: `
+      <p>Hi ${escapeHtml(fullName)},</p>
+      <p><strong>${escapeHtml(orgName)}</strong> is now verified on UVAA. Share this cohort code with your participants so they can register:</p>
+      <p style="font-size: 20px; font-weight: bold; letter-spacing: 2px;">${escapeHtml(cohortCode)}</p>
+      <p>They'll enter it, along with their own email address, on the UVAA registration page.</p>
+    `,
+  })
+
+  if (!config.smtp.host) {
+    console.log(`\n[dev email] SMTP not configured — cohort code for ${to}`)
+    console.log(`[dev email] ${orgName}: ${cohortCode}\n`)
+  }
+
+  return info
+}
+
 function escapeHtml(str) {
   return String(str)
     .replaceAll('&', '&amp;')

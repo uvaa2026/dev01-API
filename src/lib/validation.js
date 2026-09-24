@@ -4,12 +4,25 @@ import { z } from 'zod'
 // (see uvaa-webapp/src/pages/Register.jsx and src/data/careerStages.js).
 // Keeping the enum values identical between frontend and backend matters —
 // if you add a vertical or career stage, update both.
-
+//
+// Participant registration is now code-first: there is no more free-text
+// `organisation` field. `vertical` here is the RESPONDENT's own
+// professional context, deliberately decoupled from the organisation's own
+// `organisationType` collected at org registration — the two happen to
+// share the same IT_TECH/EDUCATION values today, but are conceptually
+// different fields (see build assumption 2).
+//
+// The consent block matches the 3-consent model exactly: `processing` is
+// mandatory with no default (z.literal(true) forces an explicit true, same
+// mechanism as the old `assessment` field it replaces); `facilitator`
+// defaults to true (opt-out); `orgAdmin` defaults to false (opt-in).
+// Declining `orgAdmin` must never change anything else about what the
+// respondent receives — enforced in auth.js, not here.
 export const registerSchema = z.object({
+  cohortCode: z.string().trim().min(1, "Enter your organisation's cohort code"),
   fullName: z.string().trim().min(1, 'Full name is required').max(200),
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  organisation: z.string().trim().min(1, 'Organisation name is required').max(200),
   vertical: z.enum(['IT_TECH', 'EDUCATION'], {
     errorMap: () => ({ message: 'Select your professional context' }),
   }),
@@ -21,12 +34,87 @@ export const registerSchema = z.object({
   }),
   department: z.string().trim().max(200).optional().or(z.literal('')),
   consent: z.object({
-    assessment: z.literal(true, {
-      errorMap: () => ({ message: 'Consent to processing your assessment responses is required' }),
+    processing: z.literal(true, {
+      errorMap: () => ({ message: 'Consent to processing your assessment data is required' }),
     }),
-    research: z.boolean().optional().default(false),
-    shareWithHrAdmin: z.boolean().optional().default(false),
+    facilitator: z.boolean().optional().default(true),
+    orgAdmin: z.boolean().optional().default(false),
   }),
+})
+
+// A bare domain like "acme.com" — no scheme, no "@", no path. Deliberately
+// loose (this only guards against obviously wrong input like a full email
+// address or a URL; it is not a DNS/MX validity check).
+const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i
+
+const orgContactSchema = z.object({
+  fullName: z.string().trim().min(1, 'Name is required').max(200),
+  email: z.string().trim().toLowerCase().email('Enter a valid email address'),
+  phone: z.string().trim().max(30).optional().or(z.literal('')),
+  wantsToParticipate: z.boolean().optional().default(false),
+})
+
+// The Org Admin also needs their own login (independent of whether they
+// ever opt in to take the assessment as a respondent — see
+// organisation_contact_credentials) — so, unlike the Facilitator contact,
+// they set a password at org registration time.
+const orgAdminContactSchema = orgContactSchema.extend({
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+})
+
+// Mirrors the org registration form (OrgRegister.jsx): organisation
+// details, a mandatory Org Admin contact, and an optional Facilitator
+// contact gated by a yes/no toggle rather than just an optional object —
+// this keeps "the org said no to a facilitator" and "the facilitator
+// fields were left blank" from being indistinguishable at the API layer.
+export const orgRegisterSchema = z.object({
+  organisationName: z.string().trim().min(1, 'Organisation name is required').max(200),
+  organisationType: z.enum(['IT_TECH', 'EDUCATION'], {
+    errorMap: () => ({ message: 'Select the type of organisation' }),
+  }),
+  emailDomain: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(DOMAIN_PATTERN, 'Enter a domain like acme.com, without "@" or "https://"')
+    .optional()
+    .or(z.literal('')),
+  seatCount: z.number().int('Seats must be a whole number').min(1, 'Purchase at least 1 seat'),
+  approvalMode: z.enum(['AUTO', 'MANUAL'], {
+    errorMap: () => ({ message: 'Choose how new participants get approved' }),
+  }),
+  provisioningModel: z.enum(['ANONYMOUS', 'NAMED_ROSTER'], {
+    errorMap: () => ({ message: 'Choose whether you will supply a named roster' }),
+  }),
+  orgAdmin: orgAdminContactSchema,
+  facilitator: z
+    .discriminatedUnion('enabled', [
+      z.object({ enabled: z.literal(true) }).merge(orgContactSchema),
+      z.object({ enabled: z.literal(false) }),
+    ])
+    .optional()
+    .default({ enabled: false }),
+}).superRefine((data, ctx) => {
+  if (data.facilitator.enabled && data.facilitator.email === data.orgAdmin.email) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['facilitator', 'email'],
+      message: 'The facilitator must use a different email address than the Org Admin',
+    })
+  }
+})
+
+export const orgLookupSchema = z.object({
+  code: z.string().trim().min(1, 'Enter a cohort code'),
+})
+
+// One roster_entries row, added by the org admin one at a time
+// (POST /org-admin/roster). Bulk CSV upload parses rows into this same
+// shape before validating each one, so a bad row in a large file fails
+// individually rather than rejecting the whole batch.
+export const rosterEntrySchema = z.object({
+  fullName: z.string().trim().min(1, 'Name is required').max(200),
+  email: z.string().trim().toLowerCase().email('Enter a valid email address'),
 })
 
 export const loginSchema = z.object({

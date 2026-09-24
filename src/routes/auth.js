@@ -4,6 +4,7 @@ import { config } from '../config.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { generateVerificationToken, hashToken, signSession } from '../lib/tokens.js'
 import { sendVerificationEmail } from '../lib/email.js'
+import { normalizeCohortCode } from '../lib/cohortCode.js'
 import { registerSchema, loginSchema, verifySchema, formatZodError } from '../lib/validation.js'
 import { requireAuth } from '../middleware/requireAuth.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
@@ -16,15 +17,38 @@ const VERIFICATION_TOKEN_HOURS = 24
 
 const UNIQUE_VIOLATION = '23505'
 
+// A rejection with a known cause (bad code, seats full, domain mismatch,
+// etc.) — thrown from inside the registration transaction so the
+// transaction rolls back cleanly (no half-consumed seat, no orphaned
+// roster lock) and the route can still respond with the right status code
+// and field-level error instead of a generic 500.
+class RegistrationRejected extends Error {
+  constructor(status, message, errors) {
+    super(message)
+    this.status = status
+    this.errors = errors
+  }
+}
+
 // ---------------------------------------------------------------------------
-// POST /auth/register
-//   1. Validate the payload shape (missing/invalid data).
-//   2. Check the email isn't already registered.
-//   3. Create the organisation (if new), respondent, credentials, consent
-//      log entries, and a verification token — all in one transaction.
-//   4. Send the verification email (best-effort — a failed send doesn't
-//      fail the registration; the account exists and can request a new
-//      link later).
+// POST /auth/register (participant)
+//   Code-first: every registration now requires a cohort code. Inside one
+//   transaction, with the organisation row locked for its duration
+//   (SELECT ... FOR UPDATE) so two concurrent registrations against the
+//   same org can never both squeeze into the last seat:
+//     1. Look up the organisation by cohort code — must exist, be ACTIVE,
+//        not past its deadline, and have a seat free.
+//     2. If the org set an email_domain, the submitted email must match it.
+//     3. If this email belongs to the org's own Org Admin/Facilitator
+//        contact, they may only register themselves if they said yes to
+//        "do you want to participate" during org registration.
+//     4. If the org uses the Named Roster model, the email must match a
+//        PENDING roster_entries row (and that row locks to this respondent).
+//     5. Create the respondent, credentials, consent log, and a
+//        verification token; increment seats_used.
+//   Email verification always happens (see build assumption 3) regardless
+//   of whether a domain was checked — domain matching gates whether
+//   registration is ALLOWED, not whether the email gets verified.
 // ---------------------------------------------------------------------------
 authRouter.post('/register', asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body)
@@ -35,6 +59,8 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
     })
   }
   const data = parsed.data
+  const cohortCode = normalizeCohortCode(data.cohortCode)
+  const emailDomain = data.email.split('@')[1] || ''
 
   const existing = await pool.query('SELECT respondent_id FROM respondents WHERE email = $1', [data.email])
   if (existing.rowCount > 0) {
@@ -47,37 +73,96 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
   let respondentId, rawToken
   try {
     ;({ respondentId, rawToken } = await withTransaction(async (client) => {
-      let orgResult = await client.query('SELECT org_id FROM organisations WHERE name = $1', [data.organisation])
-      let orgId
-      if (orgResult.rowCount > 0) {
-        orgId = orgResult.rows[0].org_id
-      } else {
-        orgResult = await client.query(
-          `INSERT INTO organisations (name, industry_vertical)
-           VALUES ($1, $2)
-           RETURNING org_id`,
-          [data.organisation, data.vertical],
-        )
-        orgId = orgResult.rows[0].org_id
+      const orgResult = await client.query(
+        `SELECT org_id, email_domain, seat_count, seats_used, approval_mode, provisioning_model,
+                org_status, cohort_deadline_at
+         FROM organisations WHERE cohort_code = $1 FOR UPDATE`,
+        [cohortCode],
+      )
+      if (orgResult.rowCount === 0) {
+        throw new RegistrationRejected(400, 'We could not find an organisation for that cohort code.', {
+          cohortCode: 'Check the cohort code and try again.',
+        })
       }
+      const org = orgResult.rows[0]
+
+      if (org.org_status !== 'ACTIVE') {
+        throw new RegistrationRejected(410, 'This cohort is not currently accepting registrations.')
+      }
+      if (org.cohort_deadline_at && new Date(org.cohort_deadline_at) < new Date()) {
+        throw new RegistrationRejected(410, 'The registration deadline for this cohort has passed.')
+      }
+      if (org.seats_used >= org.seat_count) {
+        throw new RegistrationRejected(409, 'This cohort has reached its maximum number of participants.')
+      }
+      if (org.email_domain && emailDomain.toLowerCase() !== org.email_domain.toLowerCase()) {
+        throw new RegistrationRejected(403, `Registration for this organisation requires an @${org.email_domain} email address.`, {
+          email: `Use your @${org.email_domain} work email address.`,
+        })
+      }
+
+      // Org Admin / Facilitator can only use their own org's code on
+      // themselves if they opted in ("wants_to_participate") when the
+      // organisation was registered.
+      const contactResult = await client.query(
+        `SELECT contact_id, role, wants_to_participate FROM organisation_contacts
+         WHERE org_id = $1 AND email = $2`,
+        [org.org_id, data.email],
+      )
+      const matchedContact = contactResult.rows[0] || null
+      if (matchedContact && !matchedContact.wants_to_participate) {
+        throw new RegistrationRejected(
+          403,
+          'Org Admins and Facilitators can only register as a participant if they opted in to participate when the organisation was registered.',
+        )
+      }
+
+      // Named Roster: the email must be pre-loaded and still unclaimed.
+      let rosterEntryId = null
+      if (org.provisioning_model === 'NAMED_ROSTER') {
+        const rosterResult = await client.query(
+          `SELECT roster_entry_id FROM roster_entries
+           WHERE org_id = $1 AND email = $2 AND status = 'PENDING'`,
+          [org.org_id, data.email],
+        )
+        if (rosterResult.rowCount === 0) {
+          throw new RegistrationRejected(
+            403,
+            "This email isn't on the pre-approved participant list for this organisation. Contact your organisation's admin.",
+            { email: 'Not on the pre-approved list for this organisation.' },
+          )
+        }
+        rosterEntryId = rosterResult.rows[0].roster_entry_id
+      }
+
+      // A MANUAL-approval organisation would otherwise lock its own Org
+      // Admin out with nobody able to approve them — the Org Admin contact
+      // already passed a stronger check (their own email verification at
+      // org-verify time), so their self-registration auto-approves
+      // regardless of the org's approval_mode. A Facilitator gets no such
+      // exception: they still go through the normal approval gate.
+      const isOrgAdminSelf = matchedContact?.role === 'ORG_ADMIN'
+      const approvalStatus = org.approval_mode === 'MANUAL' && !isOrgAdminSelf ? 'PENDING' : 'APPROVED'
 
       const respondentResult = await client.query(
         `INSERT INTO respondents
            (organisation_id, full_name, email, industry_vertical, career_stage_code, experience_range, department,
-            consent_assessment, consent_research, consent_share_with_hr)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            consent_assessment, consent_facilitator, consent_org_admin, roster_entry_id, approval_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING respondent_id`,
         [
-          orgId,
+          org.org_id,
           data.fullName,
           data.email,
           data.vertical,
           data.careerStage,
           data.experience,
           data.department || null,
-          data.consent.assessment,
-          data.consent.research,
-          data.consent.shareWithHrAdmin,
+          data.consent.processing,
+          data.consent.facilitator,
+          data.consent.orgAdmin,
+          rosterEntryId,
+          approvalStatus,
         ],
       )
       const newRespondentId = respondentResult.rows[0].respondent_id
@@ -89,14 +174,29 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
       )
 
       const consentEntries = [
-        ['ASSESSMENT', data.consent.assessment],
-        ['RESEARCH_VALIDATION', data.consent.research],
-        ['INDIVIDUAL_DATA_SHARING', data.consent.shareWithHrAdmin],
+        ['ASSESSMENT', data.consent.processing],
+        ['FACILITATOR_VISIBILITY', data.consent.facilitator],
+        ['ORG_ADMIN_VISIBILITY', data.consent.orgAdmin],
       ]
       for (const [type, given] of consentEntries) {
         await client.query(
           `INSERT INTO consent_log (respondent_id, consent_type, consent_given) VALUES ($1, $2, $3)`,
           [newRespondentId, type, given],
+        )
+      }
+
+      await client.query('UPDATE organisations SET seats_used = seats_used + 1 WHERE org_id = $1', [org.org_id])
+
+      if (matchedContact) {
+        await client.query(
+          'UPDATE organisation_contacts SET respondent_id = $1 WHERE contact_id = $2',
+          [newRespondentId, matchedContact.contact_id],
+        )
+      }
+      if (rosterEntryId) {
+        await client.query(
+          `UPDATE roster_entries SET status = 'REGISTERED', respondent_id = $1 WHERE roster_entry_id = $2`,
+          [newRespondentId, rosterEntryId],
         )
       }
 
@@ -110,6 +210,9 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
       return { respondentId: newRespondentId, rawToken: raw }
     }))
   } catch (err) {
+    if (err instanceof RegistrationRejected) {
+      return res.status(err.status).json({ message: err.message, ...(err.errors ? { errors: err.errors } : {}) })
+    }
     if (err.code === UNIQUE_VIOLATION) {
       // Lost the race against a concurrent registration with the same email.
       return res.status(409).json({
@@ -184,7 +287,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   const { email, password, rememberMe } = parsed.data
 
   const result = await pool.query(
-    `SELECT r.respondent_id, r.full_name, r.email, r.is_admin,
+    `SELECT r.respondent_id, r.full_name, r.email, r.is_admin, r.approval_status,
             uc.password_hash, uc.is_email_verified, uc.failed_login_attempts, uc.locked_until
      FROM respondents r
      JOIN user_credentials uc ON uc.respondent_id = r.respondent_id
@@ -220,6 +323,13 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
 
   if (!account.is_email_verified) {
     return res.status(403).json({ message: 'Please verify your email before logging in.' })
+  }
+
+  if (account.approval_status === 'PENDING') {
+    return res.status(403).json({ message: "Your registration is awaiting approval from your organisation's admin." })
+  }
+  if (account.approval_status === 'REJECTED') {
+    return res.status(403).json({ message: 'Your registration was not approved. Contact your organisation admin for details.' })
   }
 
   await pool.query(
@@ -262,10 +372,13 @@ authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.career_stage_code,
             r.experience_range, r.department, r.is_admin, o.name AS organisation_name,
-            uc.is_email_verified, uc.last_login_at
+            uc.is_email_verified, uc.last_login_at,
+            oc.org_id AS org_admin_of
      FROM respondents r
      JOIN organisations o ON o.org_id = r.organisation_id
      JOIN user_credentials uc ON uc.respondent_id = r.respondent_id
+     LEFT JOIN organisation_contacts oc
+       ON oc.respondent_id = r.respondent_id AND oc.role = 'ORG_ADMIN' AND oc.verified_at IS NOT NULL
      WHERE r.respondent_id = $1`,
     [req.user.sub],
   )
@@ -289,6 +402,7 @@ authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
       isEmailVerified: row.is_email_verified,
       lastLoginAt: row.last_login_at,
       isAdmin: row.is_admin,
+      isOrgAdminOf: row.org_admin_of,
     },
   })
 }))
