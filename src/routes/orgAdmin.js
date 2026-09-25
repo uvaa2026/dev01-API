@@ -191,7 +191,7 @@ orgAdminRouter.get('/participants/:id', asyncHandler(async (req, res) => {
     return res.status(200).json({
       ...base,
       score: null,
-      message: 'This participant has not consented to share their profile and scores with the Org Admin.',
+      message: 'This participant has not consented to share their profile and scores with the Admin.',
     })
   }
   if (!completion.reportReady) {

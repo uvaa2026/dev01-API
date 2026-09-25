@@ -172,9 +172,12 @@ assessmentRouter.patch('/guna/draft', asyncHandler(async (req, res) => {
 
 // POST /assessment/guna — records a complete submission (all 15 answers)
 // and scores it immediately (Scoring Guide v5, section 2: guna dominance +
-// TPE_raw/TPE_index). Upserts on respondent_id: a resubmission replaces
-// the previous answers and recomputes the score from scratch. Clears the
-// draft on success — a submitted assessment has no draft.
+// TPE_raw/TPE_index). Once submitted, a respondent's answers are locked —
+// no resubmission, no "review/edit" — so INSERT ... ON CONFLICT DO NOTHING
+// is used purely to make the "already submitted" check race-safe (two
+// concurrent submits from the same respondent can't both win), not to
+// allow overwriting. Clears the draft on success — a submitted assessment
+// has no draft.
 assessmentRouter.post('/guna', asyncHandler(async (req, res) => {
   if (!(await requireBriefingAck(req, res))) return
 
@@ -194,17 +197,7 @@ assessmentRouter.post('/guna', asyncHandler(async (req, res) => {
         sattva_count, rajas_count, tamas_count, dominance, provisional,
         tpe_raw, tpe_index, scored_at)
      VALUES ($1, $2::jsonb, now(), $3, $4, $5, $6, $7, $8, $9, now())
-     ON CONFLICT (respondent_id) DO UPDATE SET
-       answers = EXCLUDED.answers,
-       submitted_at = now(),
-       sattva_count = EXCLUDED.sattva_count,
-       rajas_count = EXCLUDED.rajas_count,
-       tamas_count = EXCLUDED.tamas_count,
-       dominance = EXCLUDED.dominance,
-       provisional = EXCLUDED.provisional,
-       tpe_raw = EXCLUDED.tpe_raw,
-       tpe_index = EXCLUDED.tpe_index,
-       scored_at = now()
+     ON CONFLICT (respondent_id) DO NOTHING
      RETURNING submitted_at`,
     [
       req.user.sub,
@@ -218,6 +211,12 @@ assessmentRouter.post('/guna', asyncHandler(async (req, res) => {
       scoring.tpeIndex,
     ],
   )
+
+  if (result.rowCount === 0) {
+    return res.status(409).json({
+      message: 'This assessment has already been submitted and cannot be changed.',
+    })
+  }
 
   await clearDraft(req.user.sub, 'GUNA')
 
@@ -282,6 +281,8 @@ assessmentRouter.patch('/construct/draft', asyncHandler(async (req, res) => {
 // and scores it immediately (Scoring Guide v5, section 3: four construct
 // subscales + DQI). The UVAA Pattern (which also needs the Guna result) is
 // computed at report time, not here — see GET /assessment/report.
+// Locked once submitted — see the comment on POST /guna above; same
+// ON CONFLICT DO NOTHING race-safety, not an editable resubmission.
 assessmentRouter.post('/construct', asyncHandler(async (req, res) => {
   if (!(await requireGunaSubmitted(req, res))) return
 
@@ -301,17 +302,7 @@ assessmentRouter.post('/construct', asyncHandler(async (req, res) => {
         upeksha_raw, anuvigna_raw, anasakti_raw, viveka_raw,
         dqi_raw, dqi_pct, dqi_band, scored_at)
      VALUES ($1, $2::jsonb, now(), $3, $4, $5, $6, $7, $8, $9, now())
-     ON CONFLICT (respondent_id) DO UPDATE SET
-       answers = EXCLUDED.answers,
-       submitted_at = now(),
-       upeksha_raw = EXCLUDED.upeksha_raw,
-       anuvigna_raw = EXCLUDED.anuvigna_raw,
-       anasakti_raw = EXCLUDED.anasakti_raw,
-       viveka_raw = EXCLUDED.viveka_raw,
-       dqi_raw = EXCLUDED.dqi_raw,
-       dqi_pct = EXCLUDED.dqi_pct,
-       dqi_band = EXCLUDED.dqi_band,
-       scored_at = now()
+     ON CONFLICT (respondent_id) DO NOTHING
      RETURNING submitted_at`,
     [
       req.user.sub,
@@ -325,6 +316,12 @@ assessmentRouter.post('/construct', asyncHandler(async (req, res) => {
       scoring.dqiBand,
     ],
   )
+
+  if (result.rowCount === 0) {
+    return res.status(409).json({
+      message: 'This assessment has already been submitted and cannot be changed.',
+    })
+  }
 
   await clearDraft(req.user.sub, 'CONSTRUCT')
 

@@ -110,7 +110,7 @@ organisationsRouter.post('/register', asyncHandler(async (req, res) => {
   }
 
   return res.status(201).json({
-    message: 'Organisation registered. Check the Org Admin email to verify before a cohort code is issued.',
+    message: 'Organisation registered. Check the Admin email to verify before a cohort code is issued.',
     organisationId: orgId,
   })
 }))
@@ -354,7 +354,7 @@ organisationsRouter.post('/login', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 organisationsRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   if (req.user.kind !== 'ORG_ADMIN') {
-    return res.status(404).json({ message: 'Not an Org Admin session.' })
+    return res.status(404).json({ message: 'Not an Admin session.' })
   }
 
   const result = await pool.query(
@@ -367,7 +367,7 @@ organisationsRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
 
   if (result.rowCount === 0) {
     res.clearCookie(config.cookieName, { path: '/' })
-    return res.status(404).json({ message: 'Org Admin account not found.' })
+    return res.status(404).json({ message: 'Admin account not found.' })
   }
 
   const row = result.rows[0]

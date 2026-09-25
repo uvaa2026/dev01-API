@@ -26,7 +26,7 @@ export async function requireOrgAdmin(req, res, next) {
 
     const result = await pool.query(query, [req.user.sub])
     if (result.rowCount === 0) {
-      return res.status(403).json({ message: 'Org Admin access required.' })
+      return res.status(403).json({ message: 'Admin access required.' })
     }
     req.orgId = result.rows[0].org_id
     next()

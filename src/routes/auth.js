@@ -113,7 +113,7 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
       if (matchedContact && !matchedContact.wants_to_participate) {
         throw new RegistrationRejected(
           403,
-          'Org Admins and Facilitators can only register as a participant if they opted in to participate when the organisation was registered.',
+          'Admins and Facilitators can only register as a participant if they opted in to participate when the organisation was registered.',
         )
       }
 

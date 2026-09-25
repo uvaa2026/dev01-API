@@ -99,7 +99,7 @@ export const orgRegisterSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['facilitator', 'email'],
-      message: 'The facilitator must use a different email address than the Org Admin',
+      message: 'The facilitator must use a different email address than the Admin',
     })
   }
 })
