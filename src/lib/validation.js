@@ -8,9 +8,10 @@ import { z } from 'zod'
 // Participant registration is now code-first: there is no more free-text
 // `organisation` field. `vertical` here is the RESPONDENT's own
 // professional context, deliberately decoupled from the organisation's own
-// `organisationType` collected at org registration — the two happen to
-// share the same IT_TECH/EDUCATION values today, but are conceptually
-// different fields (see build assumption 2).
+// `organisationType` collected at org registration — the two share the
+// IT_TECH/EDUCATION/OTHERS values, but organisationType (below) also
+// accepts a much broader set of India-wide categories that `vertical` does
+// not — they are conceptually different fields (see build assumption 2).
 //
 // The consent block matches the 3-consent model exactly: `processing` is
 // mandatory with no default (z.literal(true) forces an explicit true, same
@@ -23,15 +24,30 @@ export const registerSchema = z.object({
   fullName: z.string().trim().min(1, 'Full name is required').max(200),
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  vertical: z.enum(['IT_TECH', 'EDUCATION'], {
-    errorMap: () => ({ message: 'Select your professional context' }),
+  vertical: z.enum(['IT_TECH', 'EDUCATION', 'OTHERS'], {
+    errorMap: () => ({ message: 'Select your industry' }),
   }),
   careerStage: z.enum(['EC', 'MC', 'SP', 'LS'], {
     errorMap: () => ({ message: 'Select your career stage' }),
   }),
-  experience: z.enum(['lt1', '1-3', '3-5', '5-8', '8-12', '12plus'], {
-    errorMap: () => ({ message: 'Select your years of experience' }),
-  }),
+  // Was a dropdown of range codes (lt1/1-3/3-5/5-8/8-12/12plus); Register.jsx
+  // now collects this as a plain number input, so coerce the numeric string
+  // the frontend sends into a number here. experience_range (the DB column
+  // this lands in) stays TEXT — see migration 022 — so routes/auth.js still
+  // writes it as a string.
+  //
+  // z.coerce.number() alone treats "" as 0 (Number("") === 0 in JS), which
+  // would silently accept a left-blank field — the preprocess step rejects
+  // "" (and null/undefined) before coercion so it fails as missing instead.
+  experience: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.coerce.number({
+      errorMap: () => ({ message: 'Enter your years of experience' }),
+    })
+      .int('Years of experience must be a whole number')
+      .min(0, 'Years of experience cannot be negative')
+      .max(60, 'Enter a realistic number of years'),
+  ),
   department: z.string().trim().max(200).optional().or(z.literal('')),
   consent: z.object({
     processing: z.literal(true, {
@@ -69,9 +85,36 @@ const orgAdminContactSchema = orgContactSchema.extend({
 // fields were left blank" from being indistinguishable at the API layer.
 export const orgRegisterSchema = z.object({
   organisationName: z.string().trim().min(1, 'Organisation name is required').max(200),
-  organisationType: z.enum(['IT_TECH', 'EDUCATION'], {
+  // Broad, India-wide categories — see uvaa-webapp/src/data/
+  // organisationTypes.js, which this list mirrors. Deliberately a wider set
+  // than respondents.vertical above (registerSchema): "Type of organisation"
+  // and a respondent's own "Industry" are different fields that happen to
+  // have shared two values historically (see the module comment above).
+  organisationType: z.enum([
+    'OTHERS',
+    'IT_TECH',
+    'EDUCATION',
+    'BFSI',
+    'HEALTHCARE',
+    'MANUFACTURING',
+    'GOVERNMENT',
+    'NONPROFIT',
+    'RETAIL_ECOMMERCE',
+    'CONSULTING',
+    'MEDIA',
+    'REAL_ESTATE',
+    'LOGISTICS',
+    'HOSPITALITY',
+    'ENERGY',
+    'AGRICULTURE',
+    'STARTUP',
+  ], {
     errorMap: () => ({ message: 'Select the type of organisation' }),
   }),
+  // Free text the org typed into the searchable picklist when it didn't
+  // match a listed category (organisationType resolves to OTHERS in that
+  // case) — see OrgRegister.jsx's handleOrganisationTypeChange.
+  organisationTypeOther: z.string().trim().max(200).optional().or(z.literal('')),
   emailDomain: z
     .string()
     .trim()

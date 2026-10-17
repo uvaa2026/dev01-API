@@ -31,13 +31,14 @@ export async function sendVerificationEmail({ to, fullName, verifyUrl }) {
     from: config.smtp.from,
     to,
     subject: 'Verify your email for UVAA',
-    text: `Hi ${fullName},\n\nVerify your email to activate your UVAA account:\n${verifyUrl}\n\nThis link expires in 24 hours.\n\nIf you didn't request this, you can ignore this email.`,
+    text: `Hi ${fullName},\n\nVerify your email to activate your UVAA account:\n${verifyUrl}\n\nThis link expires in 24 hours.\n\nIf you didn't request this, you can ignore this email.\n\nRegards,\nTeam UVAA`,
     html: `
       <p>Hi ${escapeHtml(fullName)},</p>
       <p>Verify your email to activate your UVAA account:</p>
       <p><a href="${verifyUrl}">${verifyUrl}</a></p>
       <p>This link expires in 24 hours.</p>
       <p>If you didn't request this, you can ignore this email.</p>
+      <p>Regards,<br>Team UVAA</p>
     `,
   })
 
@@ -54,12 +55,13 @@ export async function sendCohortCodeEmail({ to, fullName, orgName, cohortCode })
     from: config.smtp.from,
     to,
     subject: `${orgName}'s UVAA cohort code is ready`,
-    text: `Hi ${fullName},\n\n${orgName} is now verified on UVAA. Share this cohort code with your participants so they can register:\n\n${cohortCode}\n\nThey'll enter it, along with their own email address, on the UVAA registration page. Keep this code only as private as your registration settings require — anyone who does not have a matching work-email domain configured will be able to register with just this code.`,
+    text: `Hi ${fullName},\n\n${orgName} is now verified on UVAA. Share this cohort code with your participants so they can register:\n\n${cohortCode}\n\nThey'll enter it, along with their own email address, on the UVAA registration page. Keep this code only as private as your registration settings require — anyone who does not have a matching work-email domain configured will be able to register with just this code.\n\nRegards,\nTeam UVAA`,
     html: `
       <p>Hi ${escapeHtml(fullName)},</p>
       <p><strong>${escapeHtml(orgName)}</strong> is now verified on UVAA. Share this cohort code with your participants so they can register:</p>
       <p style="font-size: 20px; font-weight: bold; letter-spacing: 2px;">${escapeHtml(cohortCode)}</p>
       <p>They'll enter it, along with their own email address, on the UVAA registration page.</p>
+      <p>Regards,<br>Team UVAA</p>
     `,
   })
 

@@ -156,7 +156,7 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
           data.email,
           data.vertical,
           data.careerStage,
-          data.experience,
+          String(data.experience),
           data.department || null,
           data.consent.processing,
           data.consent.facilitator,

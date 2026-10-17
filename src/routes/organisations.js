@@ -40,12 +40,13 @@ organisationsRouter.post('/register', asyncHandler(async (req, res) => {
     ;({ orgId, rawToken } = await withTransaction(async (client) => {
       const orgResult = await client.query(
         `INSERT INTO organisations
-           (name, industry_vertical, admin_email, email_domain, seat_count, approval_mode, provisioning_model)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (name, industry_vertical, industry_vertical_other, admin_email, email_domain, seat_count, approval_mode, provisioning_model)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING org_id`,
         [
           data.organisationName,
           data.organisationType,
+          data.organisationTypeOther || null,
           data.orgAdmin.email,
           data.emailDomain || null,
           data.seatCount,
