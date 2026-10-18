@@ -11,20 +11,16 @@
 // neutral, 3 options A-C per scenario — Indian Patent Application No.
 // 202641076718). This replaces the earlier 4-option SAMPLE/PLACEHOLDER set.
 //
-// IMPORTANT — scoring status: the booklet is participant-facing and carries
-// no scoring key. It does not say which of the 4 parts is which dimension,
-// nor which option (A/B/C) is Anchored/Reactive/Avoidant for any scenario.
-// The dimension assignment below (Part 1=UPEKSHA, Part 2=ANUVIGNA,
-// Part 3=ANASAKTI, Part 4=VIVEKA) follows the parts' order and thematic
-// content, matching the current dimension ordering. The `score` on each
-// option is Claude's best-effort estimate, applying the Anchored(3)/
-// Reactive(2)/Avoidant(1) behavioural definitions from Scoring Guide v5
-// §3.1 to each response — NOT the validated scoring master referenced
-// there ("scores are looked up per item from the scoring master"). Treat
-// every dimension tag and score in this file as provisional until the
-// UVAA framework developer supplies the real per-item key, and swap them
-// in then — the shape (dimension, options[].score) is all this file's
-// consumers depend on.
+// Scoring status: option scores below are the validated key from
+// UVAA_EC_V12051026_ScoringMaster.docx ("Early Career, Scoring Master"),
+// applied 2026-10 — this superseded an earlier best-effort estimate that
+// had 6 of the 32 items' A/B/C scores swapped (up-05, an-02, an-05, ak-06,
+// vk-02, vk-03) relative to this key; those were corrected against it.
+// Dimension assignment (Part 1=UPEKSHA, Part 2=ANUVIGNA, Part 3=ANASAKTI,
+// Part 4=VIVEKA) matches the Scoring Master's own section headers and is
+// confirmed correct. If a future scoring master version changes any
+// scenario's point values, update both this file and the frontend copy
+// (uvaa-webapp/src/data/constructScenarios.js) together.
 //
 // This copy is what actually computes results: src/lib/scoring.js reads
 // the `score` field to turn a respondent's option picks into the four
@@ -90,8 +86,8 @@ export const CONSTRUCT_SCENARIOS = [
     situation: 'You asked to move onto newer, more visible work. Instead you have been put on an older area nobody volunteers for, where little is written down and the person who knew it best left last year. Your manager says it will teach you things you cannot learn anywhere else, and that you are the person they trust with it. You are not sure whether that is true or whether it is what gets said when work needs covering.',
     options: [
       { key: 'A', text: 'You take it on and do what it needs, no more. Six weeks in, the person handing over notices the difference and stops offering you the harder parts.', score: 1 },
-      { key: 'B', text: 'You put real effort into it without knowing whether it leads anywhere. Around six weeks in you ask what you should be getting from it and where it goes.', score: 2 },
-      { key: 'C', text: 'You take it on, but first you ask your manager to say plainly what comes after it and to put that in writing. You want the commitment before you start.', score: 3 },
+      { key: 'B', text: 'You put real effort into it without knowing whether it leads anywhere. Around six weeks in you ask what you should be getting from it and where it goes.', score: 3 },
+      { key: 'C', text: 'You take it on, but first you ask your manager to say plainly what comes after it and to put that in writing. You want the commitment before you start.', score: 2 },
     ],
   },
   {
@@ -141,9 +137,9 @@ export const CONSTRUCT_SCENARIOS = [
     dimension: 'ANUVIGNA',
     situation: 'It is nearly eight at night. Something has gone wrong with work your team delivered and you were part of it. Your manager calls and says, fast and hard: what happened? This is the third time this quarter. I have to explain this to someone in thirty minutes.',
     options: [
-      { key: 'A', text: 'You say you are on it and end the call as fast as you can. It takes another half hour before you have settled enough to look properly.', score: 2 },
+      { key: 'A', text: 'You say you are on it and end the call as fast as you can. It takes another half hour before you have settled enough to look properly.', score: 1 },
       { key: 'B', text: 'You tell them you do not know yet and will have a factual summary in twenty minutes. You get off the call and start on it.', score: 3 },
-      { key: 'C', text: 'You take them through how the work was done, who reviewed it and why the process was sound. You are ten minutes in before you have looked at anything.', score: 1 },
+      { key: 'C', text: 'You take them through how the work was done, who reviewed it and why the process was sound. You are ten minutes in before you have looked at anything.', score: 2 },
     ],
   },
   {
@@ -171,9 +167,9 @@ export const CONSTRUCT_SCENARIOS = [
     dimension: 'ANUVIGNA',
     situation: 'You are a week from a deadline. This morning a team member you depend on has gone off sick for three days. You are on the client call an hour later and you have not had time to work out what it means. Twenty minutes in, the client asks you directly whether the date still holds. Your manager is on the call and says nothing.',
     options: [
-      { key: 'A', text: 'You say the date is under review and move the conversation on. You work it out afterwards and send it through two days later.', score: 1 },
+      { key: 'A', text: 'You say the date is under review and move the conversation on. You work it out afterwards and send it through two days later.', score: 2 },
       { key: 'B', text: 'You tell the client you do not know yet, give them the current status, and commit to confirming by end of day. The call goes quiet for a moment.', score: 3 },
-      { key: 'C', text: 'You say the date still holds and that you will find a way. Two days later you have to go back and revise it, on email, without the room.', score: 2 },
+      { key: 'C', text: 'You say the date still holds and that you will find a way. Two days later you have to go back and revise it, on email, without the room.', score: 1 },
     ],
   },
   {
@@ -263,9 +259,9 @@ export const CONSTRUCT_SCENARIOS = [
     dimension: 'ANASAKTI',
     situation: 'Something you built and have looked after for four months is being handed to someone else because you are needed elsewhere. In the handover they propose several changes. Most are sensible. One you think is clearly wrong and will cause a problem in about three months.',
     options: [
-      { key: 'A', text: 'You explain why you think the one change is wrong. When they go ahead you put a note somewhere recording the reasoning, in case it causes a problem.', score: 3 },
+      { key: 'A', text: 'You explain why you think the one change is wrong. When they go ahead you put a note somewhere recording the reasoning, in case it causes a problem.', score: 2 },
       { key: 'B', text: 'You say very little, including about the change you think is wrong. It is theirs now. Three months later it causes the problem you expected.', score: 1 },
-      { key: 'C', text: 'You explain the reasoning behind what you built, agree with the changes that improve it, and say why you think the one is wrong. Then you leave it with them.', score: 2 },
+      { key: 'C', text: 'You explain the reasoning behind what you built, agree with the changes that improve it, and say why you think the one is wrong. Then you leave it with them.', score: 3 },
     ],
   },
   {
@@ -305,9 +301,9 @@ export const CONSTRUCT_SCENARIOS = [
     dimension: 'VIVEKA',
     situation: 'A former colleague you worked with closely for two years asks you to be a reference. You like them and rate them as a collaborator. You also have a specific concern about a gap that is directly relevant to the role they are applying for, and they may not know you hold it.',
     options: [
-      { key: 'A', text: 'You decline, saying you are too far from their recent work to give a current picture. It is partly true and it is not the reason.', score: 1 },
+      { key: 'A', text: 'You decline, saying you are too far from their recent work to give a current picture. It is partly true and it is not the reason.', score: 2 },
       { key: 'B', text: 'You tell them what the concern is before you agree to anything, and let them decide whether they still want you as a reference.', score: 3 },
-      { key: 'C', text: 'You agree and give a positive account without raising the concern. They get the role. Four months later you hear it is not going well.', score: 2 },
+      { key: 'C', text: 'You agree and give a positive account without raising the concern. They get the role. Four months later you hear it is not going well.', score: 1 },
     ],
   },
   {
@@ -315,8 +311,8 @@ export const CONSTRUCT_SCENARIOS = [
     dimension: 'VIVEKA',
     situation: 'Your lead is putting together a status update that goes upward this afternoon and asks whether your piece is done. It is nearly done. What remains is small but important, and it depends on something you are waiting on from someone else. Your lead is clearly hoping for a yes.',
     options: [
-      { key: 'A', text: 'You say it is essentially done. It will be by the time anyone acts on the report, and the remaining piece would not go into an update at this level.', score: 1 },
-      { key: 'B', text: 'You say yes and spend the rest of the afternoon trying to close the remaining part before anyone gets round to reading the update.', score: 2 },
+      { key: 'A', text: 'You say it is essentially done. It will be by the time anyone acts on the report, and the remaining piece would not go into an update at this level.', score: 2 },
+      { key: 'B', text: 'You say yes and spend the rest of the afternoon trying to close the remaining part before anyone gets round to reading the update.', score: 1 },
       { key: 'C', text: 'You say it is not done, knowing that changes what goes up this afternoon. You tell them exactly what is left and when it will close.', score: 3 },
     ],
   },
