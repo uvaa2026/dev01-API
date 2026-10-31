@@ -1,10 +1,26 @@
 // Server-side copy of the real UVAA/TPE Guna Profiler content — 15
-// vignettes, extracted from UVAA_TPE_ScoringMaster_V6_170826.docx. Each
-// vignette has exactly one option scored Sattva=3, Rajas=2, Tamas=1
-// (scoring master V6). Duplicated from
+// vignettes, extracted from
+// UVAA_TPE_ScoringMaster_with_key_V2_Final_301026.docx ("Guna Profiler,
+// 15 Vignettes" — V2 Final, 30 October 2026). Duplicated from
 // uvaa-webapp/src/data/gunaVignettes.js rather than shared across
 // packages — keep both in sync if a vignette or its guna/score ever
 // changes (same convention as GUNA_VIGNETTE_IDS in lib/validation.js).
+//
+// Applied 2026-10-31: this is a full content revision over the prior
+// UVAA_TPE_ScoringMaster_V6_170826.docx — all 15 vignettes were
+// regenerated from the new document (title, prompt, and all three
+// options' text/guna/score), not hand patched. `id` values were kept
+// stable (same vignette-position slugs as before) even though several
+// titles changed materially, so GUNA_VIGNETTE_IDS in lib/validation.js
+// did not need to change and any already-submitted respondent's stored
+// TPE score is unaffected — scoring happens once at submission time and
+// is persisted (guna_responses table), not recomputed from this file on
+// every read. The one exception is the admin "review answers" screen,
+// which looks up vignette/option text live by id+key — for a respondent
+// who submitted before this revision, it will now show the new option
+// wording next to their historical choice, not the wording they actually
+// saw. Each vignette has exactly one option scored Sattva=3, Rajas=2,
+// Tamas=1, cross-checked programmatically against the source document.
 //
 // This copy is what actually computes results: src/lib/scoring.js reads
 // the `guna`/`score` fields to turn a respondent's option picks into a
@@ -15,173 +31,156 @@
 // The respondent-facing UI never sees `guna`/`score` while answering —
 // this file exists on the API only, not sent to the browser during the
 // quiz itself.
+
 export const GUNA_VIGNETTES = [
   {
     id: "before-you-commit",
-    title: "Before You Commit",
-    prompt: "You are about to commit to something that will affect the people around you. Someone who has done this before is available to talk to. You could also just proceed.",
+    title: "Deciding with others affected",
+    prompt: "You are about to commit to something that will affect several people around you. Someone who has done this before is nearby and free. You could also just go ahead.",
     options: [
-      { key: "A", text: "You ask them first and say openly what you are planning and why.", guna: "SATTVA", score: 3 },
-      { key: "B", text: "You go ahead. You have thought it through and checking would only slow it down.", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You put the decision off. You would rather not commit until it feels certain.", guna: "TAMAS", score: 1 },
+      { key: "A", text: "You go ahead now. The checking can happen once it is moving.", guna: "RAJAS", score: 2 },
+      { key: "B", text: "You go over first and set out what you are planning and why.", guna: "SATTVA", score: 3 },
+      { key: "C", text: "You hold off deciding for now. Nothing is committed either way.", guna: "TAMAS", score: 1 },
     ],
   },
   {
     id: "now-or-later",
-    title: "Now or Later",
-    prompt: "Something you want is available now. Taking it means a cost later, one you can see clearly but cannot yet feel.",
+    title: "A closing window",
+    prompt: "You are about to commit to an investment. The returns look uncertain, but the offer is attractive and the window closes this week.",
     options: [
-      { key: "A", text: "You take it because deciding not to would take more effort than taking it.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You weigh what it actually costs later, then decide either way.", guna: "SATTVA", score: 3 },
-      { key: "C", text: "You take it, and tell yourself you will offset the cost somehow when it arrives.", guna: "RAJAS", score: 2 },
+      { key: "A", text: "You commit now. Offer looks good and the window matters.", guna: "RAJAS", score: 2 },
+      { key: "B", text: "You commit without working it through, and it is done.", guna: "TAMAS", score: 1 },
+      { key: "C", text: "You work out what it returns against what it costs.", guna: "SATTVA", score: 3 },
     ],
   },
   {
     id: "when-the-motivation-goes",
-    title: "When the Motivation Goes",
-    prompt: "You committed to something weeks ago. The energy that started it has gone. Nobody would notice if you quietly stopped now.",
+    title: "The energy has gone",
+    prompt: "You started something six weeks ago and the enthusiasm with which you began has gone. Nobody would notice if you quietly let it drop.",
     options: [
-      { key: "A", text: "You wait until you feel like it again, then pick it back up with energy.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You stop for now. You are not feeling it and forcing yourself rarely works.", guna: "TAMAS", score: 1 },
-      { key: "C", text: "You keep going because you said you would, whatever the feeling is.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You carry on at the same pace. The work is the same.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You put it aside and start something that has more in it for you.", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You let it drop quietly. Nothing further is done on it at all.", guna: "TAMAS", score: 1 },
     ],
   },
   {
     id: "not-urgent-today",
-    title: "Not Urgent Today",
-    prompt: "Something you are responsible for needs doing. It is not urgent today. Easier and more enjoyable things are available to you.",
+    title: "Nothing turns on it today",
+    prompt: "Something you are responsible for needs proper focus, but nothing turns on it today. Three other things on your list are easier and quicker to start.",
     options: [
-      { key: "A", text: "You do the easier things instead. It will still be sitting there tomorrow.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You start it now, even a small part, so that it is moving.", guna: "SATTVA", score: 3 },
-      { key: "C", text: "You do it once it becomes urgent. You work better under pressure anyway.", guna: "RAJAS", score: 2 },
+      { key: "A", text: "You leave it until the pressure is on, then do it in one go.", guna: "RAJAS", score: 2 },
+      { key: "B", text: "You do the other three instead. The rest of it can wait.", guna: "TAMAS", score: 1 },
+      { key: "C", text: "You start it now, even a small part, so that it is moving.", guna: "SATTVA", score: 3 },
     ],
   },
   {
     id: "about-to-respond",
-    title: "About to Respond",
-    prompt: "You strongly disagree with what someone has just said and you are about to reply. What you say will land on them.",
+    title: "A few seconds to answer",
+    prompt: "Someone has just said something you strongly disagree with. Others are present. Whatever you say next will land on them, and you have a few seconds.",
     options: [
-      { key: "A", text: "You say it plainly. How they choose to take it is not your responsibility.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You say nothing at all. It is not worth the friction it would cause.", guna: "TAMAS", score: 1 },
-      { key: "C", text: "You say what you think, and take a moment over how to say it.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You say what you think, and take the moment over how you put it.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You say it plainly. How they take it is their own business.", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You let it go and say nothing. The friction is not worth it.", guna: "TAMAS", score: 1 },
     ],
   },
   {
     id: "you-have-it-now",
-    title: "You Have It Now",
-    prompt: "Something you wanted for a long time has arrived. You have it.",
+    title: "It has come through",
+    prompt: "The thing you spent two years working toward has finally come through. It is the middle of an ordinary week and nobody has mentioned it since this morning.",
     options: [
-      { key: "A", text: "You take it in properly before moving on to whatever comes next.", guna: "SATTVA", score: 3 },
-      { key: "B", text: "You are already thinking about the next thing before this one has settled.", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You barely register it at all. It was never really the point anyway.", guna: "TAMAS", score: 1 },
+      { key: "A", text: "You are already planning the next one before this has settled.", guna: "RAJAS", score: 2 },
+      { key: "B", text: "You take time to get this in properly first. What is next can wait.", guna: "SATTVA", score: 3 },
+      { key: "C", text: "You barely register it. The week goes on as the others did.", guna: "TAMAS", score: 1 },
     ],
   },
   {
     id: "harder-than-expected",
-    title: "Harder Than Expected",
-    prompt: "You are partway through something that has turned out much harder than you expected. Stopping is available and nobody would hold it against you.",
+    title: "Harder than anyone thought",
+    prompt: "You are halfway through something that has turned out much harder than anyone expected. Stepping away without blame is available to you.",
     options: [
-      { key: "A", text: "You look for something else to move to that would feel more productive.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You stop. It is not working and there is no point forcing it.", guna: "TAMAS", score: 1 },
-      { key: "C", text: "You keep going. You said you would and the difficulty does not change it.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You carry on with it at the same pace and see it through to the end.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You step away from it. It is not working and forcing it rarely helps.", guna: "TAMAS", score: 1 },
+      { key: "C", text: "You take it on at double the pace to get it behind you.", guna: "RAJAS", score: 2 },
     ],
   },
   {
     id: "it-went-wrong",
-    title: "It Went Wrong",
-    prompt: "Something has gone wrong for you. Other people's decisions contributed to it. So did some of your own.",
+    title: "Asked what happened",
+    prompt: "Something has gone badly wrong. Other people's choices contributed to it and so did two of your own. You are the one being asked what happened.",
     options: [
-      { key: "A", text: "You look at your own part first, then theirs, and act on what you can.", guna: "SATTVA", score: 3 },
-      { key: "B", text: "You focus on what the others did. That is where most of it sits.", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You accept it as bad luck. These things happen and there is nothing to learn.", guna: "TAMAS", score: 1 },
+      { key: "A", text: "You put it down to bad luck. These things happen and there is nothing to learn. You put it down to bad luck and the matter is left there.", guna: "TAMAS", score: 1 },
+      { key: "B", text: "You focus on what the others decided and yours too, in detail and at once.", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You look at the choices and consequences and present the learning ,", guna: "SATTVA", score: 3 },
     ],
   },
   {
     id: "something-disrupts-it",
-    title: "Something Disrupts It",
-    prompt: "Something unexpected has disrupted your plans for the week. It is nobody's fault in particular.",
+    title: "At your expense",
+    prompt: "Someone has been making remarks at your expense in front of others. Each one is framed as a joke and people laugh. It has been going on for weeks.",
     options: [
-      { key: "A", text: "You go straight to worrying about what else is likely to go wrong.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You feel the reaction rise, notice it, and then work out what to do.", guna: "SATTVA", score: 3 },
-      { key: "C", text: "You feel it as a wave of irritation that takes some time to pass.", guna: "RAJAS", score: 2 },
+      { key: "A", text: "You start giving it back in the same register. It escalates quietly over a fortnight.", guna: "RAJAS", score: 2 },
+      { key: "B", text: "You speak to them directly, say how it lands, and ask what can change.", guna: "SATTVA", score: 3 },
+      { key: "C", text: "You say nothing each time. You take less part in those conversations.", guna: "TAMAS", score: 1 },
     ],
   },
   {
     id: "unexpected-time",
-    title: "Unexpected Time",
-    prompt: "An unexpected stretch of free time opens up. Nothing at all is required of you.",
+    title: "The afternoon is clear",
+    prompt: "Something cancels and the rest of the day is suddenly clear. Nothing is expected of you until tomorrow.",
     options: [
-      { key: "A", text: "You use some of it to sit with something you have been avoiding.", guna: "SATTVA", score: 3 },
-      { key: "B", text: "You fill it with something productive. There is always more to get done.", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You fill it with whatever is easiest to hand, and the time goes.", guna: "TAMAS", score: 1 },
+      { key: "A", text: "You fill it with whatever is nearest to hand, and the time goes.", guna: "TAMAS", score: 1 },
+      { key: "B", text: "You fill it with work you had not planned to do today.", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You use part of it on something you have been putting off.", guna: "SATTVA", score: 3 },
     ],
   },
   {
     id: "it-may-not-work",
-    title: "It May Not Work",
-    prompt: "You are partway through something where the outcome is genuinely uncertain and may well not go your way.",
+    title: "It may not go your way",
+    prompt: "You are partway through something where the outcome is genuinely uncertain. It may well not go your way, and that will not be down to anything you did.",
     options: [
-      { key: "A", text: "You ease off. There is no sense putting everything into something that may not land.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You do it as well as you can and let the outcome be what it is.", guna: "SATTVA", score: 3 },
-      { key: "C", text: "You push harder, because the uncertainty makes the result matter more to you.", guna: "RAJAS", score: 2 },
+      { key: "A", text: ". You ease off a little. No sense giving everything to something that may not land.", guna: "TAMAS", score: 1 },
+      { key: "B", text: ". You do it as well as you can. The outcome is not yours to own.", guna: "SATTVA", score: 3 },
+      { key: "C", text: "You put more into it than you planned to. Effort is the part you control.", guna: "RAJAS", score: 2 },
     ],
   },
   {
     id: "two-things-in-one-day",
-    title: "Two Things in One Day",
-    prompt: "Two things happen in the same day. One good, one difficult. Neither of them is major.",
+    title: "Both in one afternoon",
+    prompt: "Two things happen within a few hours. One is good and one is difficult. Neither is large enough that anyone else would remember it by Friday.",
     options: [
-      { key: "A", text: "You feel both strongly, one after the other, and are tired by the evening.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "The difficult one stays with you and colours the whole rest of the day.", guna: "TAMAS", score: 1 },
-      { key: "C", text: "You take both in, and neither pulls you far from where you were.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You take both in, and carry on much as you were before either arrived.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "The difficult one sets the tone and the rest of the day goes with it.", guna: "TAMAS", score: 1 },
+      { key: "C", text: "You act on each one as it lands, and the day runs long.", guna: "RAJAS", score: 2 },
     ],
   },
   {
     id: "you-reached-it",
-    title: "You Reached It",
-    prompt: "You have reached something you set out some time ago to reach.",
+    title: "You have arrived",
+    prompt: "You have achieved something you set out a long time ago to reach. It is done and it is yours.",
     options: [
-      { key: "A", text: "You start comparing it to what the others around you have managed to get.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You stop long enough to register having arrived where you aimed.", guna: "SATTVA", score: 3 },
-      { key: "C", text: "You set the next target almost immediately and start working on it.", guna: "RAJAS", score: 2 },
+      { key: "A", text: "You move on to whatever is next without marking it at all.", guna: "TAMAS", score: 1 },
+      { key: "B", text: "You look around to see what others have managed to get", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You stop long enough to register that you have arrived somewhere.", guna: "SATTVA", score: 3 },
     ],
   },
   {
     id: "it-turned",
-    title: "It Turned",
-    prompt: "Something that once brought you real pleasure has started to feel like a burden.",
+    title: "It used to be the best part",
+    prompt: "Something that used to be the best part of your life has slowly become the part you dread. Nothing about it changed.",
     options: [
-      { key: "A", text: "You hold onto it. It meant something once and letting go would be a loss.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You keep it going out of habit, without ever examining why you still do.", guna: "TAMAS", score: 1 },
-      { key: "C", text: "You look at it clearly and decide whether it still belongs in your life.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You look at it directly and decide whether it still belongs in your life.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You carry on with it, without asking why you do.", guna: "TAMAS", score: 1 },
+      { key: "C", text: "You hold onto it and put more in, to get back what it was.", guna: "RAJAS", score: 2 },
     ],
   },
   {
     id: "it-rises",
-    title: "It Rises",
-    prompt: "A strong feeling rises in you, anger or craving or hurt. Nobody around you knows it is happening.",
+    title: "Nobody can tell",
+    prompt: "Something rises in you sharply in the middle of a heated conversation. The people around you cannot tell it is happening.",
     options: [
-      { key: "A", text: "You notice it, let it be there, and choose what you do next.", guna: "SATTVA", score: 3 },
-      { key: "B", text: "You act on it while it is strong. It is honest and it is what you feel.", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You push it down and carry on. Feeling it would not help you anything.", guna: "TAMAS", score: 1 },
+      { key: "A", text: "You push it down and carry on. Going into it would help nobody.", guna: "TAMAS", score: 1 },
+      { key: "B", text: "You let it be there, and carry on with the conversation as it was.", guna: "SATTVA", score: 3 },
+      { key: "C", text: "You act on it while it is strong. Anything else would be pretending.", guna: "RAJAS", score: 2 },
     ],
   },
 ]
-
-export const TOTAL_GUNA_QUESTIONS = GUNA_VIGNETTES.length
-// Kept for a future results UI — not used anywhere today since scoring is
-// deliberately deferred (see the note at the top of this file).
-export const GUNA_LABELS = {
-  SATTVA: {
-    title: 'Sattva Dominant',
-    description: 'Tends to meet pressure with balance — steady, clear-headed, and quick to reorient toward what’s next.',
-  },
-  RAJAS: {
-    title: 'Rajas Dominant',
-    description: 'Tends to meet pressure with drive and urgency — energised to act, though it can tip into restlessness or reactivity.',
-  },
-  TAMAS: {
-    title: 'Tamas Dominant',
-    description: 'Tends to meet pressure by withdrawing — pausing, avoiding, or disengaging until the pressure eases on its own.',
-  },
-}
