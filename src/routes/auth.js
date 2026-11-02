@@ -3,9 +3,16 @@ import { pool, withTransaction } from '../db.js'
 import { config } from '../config.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { generateVerificationToken, hashToken, signSession } from '../lib/tokens.js'
-import { sendVerificationEmail } from '../lib/email.js'
+import { sendVerificationEmail, sendPasswordResetEmail } from '../lib/email.js'
 import { normalizeCohortCode } from '../lib/cohortCode.js'
-import { registerSchema, loginSchema, verifySchema, formatZodError } from '../lib/validation.js'
+import {
+  registerSchema,
+  loginSchema,
+  verifySchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  formatZodError,
+} from '../lib/validation.js'
 import { requireAuth } from '../middleware/requireAuth.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 
@@ -14,6 +21,7 @@ export const authRouter = Router()
 const MAX_FAILED_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
 const VERIFICATION_TOKEN_HOURS = 24
+const RESET_TOKEN_MINUTES = 60
 
 const UNIQUE_VIOLATION = '23505'
 
@@ -274,6 +282,103 @@ authRouter.post('/verify', asyncHandler(async (req, res) => {
   })
 
   return res.status(200).json({ message: 'Your email has been verified. You can now log in.' })
+}))
+
+// ---------------------------------------------------------------------------
+// POST /auth/forgot-password — requests a password reset link by email.
+// Always responds with the same generic message whether or not the email
+// matches an account, so this endpoint can't be used to probe which emails
+// are registered (same reasoning as login's "Invalid email or password").
+// ---------------------------------------------------------------------------
+authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Enter a valid email address.' })
+  }
+  const { email } = parsed.data
+
+  const genericResponse = () => res.status(200).json({
+    message: "If an account exists for that email address, we've sent a password reset link.",
+  })
+
+  const result = await pool.query('SELECT respondent_id, full_name FROM respondents WHERE email = $1', [email])
+  if (result.rowCount === 0) {
+    return genericResponse()
+  }
+  const { respondent_id: respondentId, full_name: fullName } = result.rows[0]
+
+  const { raw, hash } = generateVerificationToken()
+  await pool.query(
+    `INSERT INTO password_reset_tokens (respondent_id, token_hash, expires_at)
+     VALUES ($1, $2, now() + interval '${RESET_TOKEN_MINUTES} minutes')`,
+    [respondentId, hash],
+  )
+
+  const resetUrl = `${config.appResetPasswordUrlBase}?token=${raw}`
+  try {
+    await sendPasswordResetEmail({ to: email, fullName, resetUrl })
+  } catch (err) {
+    console.error('Failed to send password reset email for', email, err)
+    // Still return the generic response — don't let a send failure leak
+    // through as a different response shape than "email not found".
+  }
+
+  return genericResponse()
+}))
+
+// ---------------------------------------------------------------------------
+// POST /auth/reset-password — consumes a password reset token from the
+// email link and sets a new password. Mirrors /verify's token-validity
+// check (hash lookup, not consumed, not expired).
+// ---------------------------------------------------------------------------
+authRouter.post('/reset-password', asyncHandler(async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: 'Some details are missing or invalid.',
+      errors: formatZodError(parsed.error),
+    })
+  }
+
+  const tokenHash = hashToken(parsed.data.token)
+  const tokenResult = await pool.query(
+    `SELECT token_id, respondent_id FROM password_reset_tokens
+     WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()`,
+    [tokenHash],
+  )
+
+  if (tokenResult.rowCount === 0) {
+    return res.status(400).json({
+      message: 'This password reset link is invalid or has expired. Please request a new one.',
+    })
+  }
+
+  const { token_id: tokenId, respondent_id: respondentId } = tokenResult.rows[0]
+  const passwordHash = await hashPassword(parsed.data.password)
+
+  await withTransaction(async (client) => {
+    await client.query('UPDATE password_reset_tokens SET consumed_at = now() WHERE token_id = $1', [tokenId])
+    // A successful reset is stronger proof of identity than the password
+    // itself, so there's no reason to leave a failed-login lockout in
+    // place afterward — clear it along with setting the new hash.
+    await client.query(
+      `UPDATE user_credentials
+       SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL
+       WHERE respondent_id = $2`,
+      [passwordHash, respondentId],
+    )
+    // Any other outstanding reset tokens for this respondent stop meaning
+    // anything once the password has actually changed — invalidate them so
+    // an older, still-unexpired link from an earlier request can't also be
+    // used.
+    await client.query(
+      `UPDATE password_reset_tokens SET consumed_at = now()
+       WHERE respondent_id = $1 AND consumed_at IS NULL`,
+      [respondentId],
+    )
+  })
+
+  return res.status(200).json({ message: 'Your password has been reset. You can now log in.' })
 }))
 
 // ---------------------------------------------------------------------------

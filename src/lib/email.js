@@ -73,6 +73,30 @@ export async function sendCohortCodeEmail({ to, fullName, orgName, cohortCode })
   return info
 }
 
+export async function sendPasswordResetEmail({ to, fullName, resetUrl }) {
+  const info = await getTransporter().sendMail({
+    from: config.smtp.from,
+    to,
+    subject: 'Reset your UVAA password',
+    text: `Hi ${fullName},\n\nWe received a request to reset your UVAA password. Choose a new password here:\n${resetUrl}\n\nThis link expires in 60 minutes and can only be used once.\n\nIf you didn't request this, you can ignore this email — your password will not change.\n\nRegards,\nTeam UVAA`,
+    html: `
+      <p>Hi ${escapeHtml(fullName)},</p>
+      <p>We received a request to reset your UVAA password. Choose a new password here:</p>
+      <p><a href="${resetUrl}">${resetUrl}</a></p>
+      <p>This link expires in 60 minutes and can only be used once.</p>
+      <p>If you didn't request this, you can ignore this email — your password will not change.</p>
+      <p>Regards,<br>Team UVAA</p>
+    `,
+  })
+
+  if (!config.smtp.host) {
+    console.log(`\n[dev email] SMTP not configured — password reset link for ${to}`)
+    console.log(`[dev email] ${resetUrl}\n`)
+  }
+
+  return info
+}
+
 function escapeHtml(str) {
   return String(str)
     .replaceAll('&', '&amp;')

@@ -170,6 +170,19 @@ export const verifySchema = z.object({
   token: z.string().min(1, 'Missing verification token'),
 })
 
+// POST /auth/forgot-password — deliberately accepts any syntactically valid
+// email; the route itself decides whether an account exists and always
+// returns the same generic response either way (see auth.js).
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Enter a valid email address'),
+})
+
+// POST /auth/reset-password — same 8-char minimum as registerSchema.password.
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Missing reset token'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+})
+
 // The 15 Guna Profiler vignette ids (UVAA_TPE_ScoringMaster_V6). Duplicated
 // from uvaa-webapp/src/data/gunaVignettes.js rather than shared — keep both
 // lists identical if a vignette is ever added, removed, or renamed.

@@ -50,6 +50,7 @@ export const config = {
   },
 
   appVerifyUrlBase: required('APP_VERIFY_URL_BASE', 'http://localhost:5173/verify'),
+  appResetPasswordUrlBase: required('APP_RESET_PASSWORD_URL_BASE', 'http://localhost:5173/reset-password'),
 
   smtp: {
     host: process.env.SMTP_HOST || '',
