@@ -8,7 +8,7 @@
 // Pure functions: no I/O here — the caller (assessment/admin routes) is
 // responsible for persisting or returning whatever these compute.
 import { GUNA_VIGNETTES } from '../data/gunaVignettes.js'
-import { CONSTRUCT_SCENARIOS } from '../data/constructScenarios.js'
+import { CONSTRUCT_SCENARIOS_BY_SCOPE, DEFAULT_LEADERSHIP_SCOPE } from '../data/constructScenarioVariants.js'
 
 const GUNA_VIGNETTE_BY_ID = new Map(GUNA_VIGNETTES.map((v) => [v.id, v]))
 
@@ -167,8 +167,21 @@ export const GUNA_DOMINANCE_PROFILE = {
 
 // ---------------------------------------------------------------------------
 // ECM / Construct (decision quality) scoring — Scoring Guide v5, section 3.
+//
+// A respondent's registration answer to "what do you lead?"
+// (leadership_scope) selects which of the three 32-scenario content sets
+// they were served and must be scored against — see
+// data/constructScenarioVariants.js. One scenario-id -> scenario lookup map
+// is built per variant (ids are identical across all three — up-01..vk-08 —
+// only the text/options differ), so computeConstruct below can score a
+// submission against the exact content the respondent actually answered.
 // ---------------------------------------------------------------------------
-const CONSTRUCT_SCENARIO_BY_ID = new Map(CONSTRUCT_SCENARIOS.map((s) => [s.id, s]))
+const CONSTRUCT_SCENARIO_BY_ID_BY_SCOPE = Object.fromEntries(
+  Object.entries(CONSTRUCT_SCENARIOS_BY_SCOPE).map(([scope, scenarios]) => [
+    scope,
+    new Map(scenarios.map((s) => [s.id, s])),
+  ]),
+)
 
 const DIMENSIONS = ['UPEKSHA', 'ANUVIGNA', 'ANASAKTI', 'VIVEKA']
 // Maps a dimension to the *_raw column name used across the API (routes,
@@ -199,17 +212,27 @@ const CAPACITY_BAND_MID_FLOOR = 50 // below this -> LOW band for capacity-line t
 /**
  * @param {{ scenarioId: string, optionKey: 'A'|'B'|'C'|'D' }[]} answers -
  *   exactly 32 entries, already validated by constructSubmissionSchema.
+ * @param {'TEAM'|'FUNCTION'|'BUSINESS_UNIT'|null|undefined} leadershipScope -
+ *   the respondent's registration answer (respondents.leadership_scope).
+ *   Selects which of the three scenario content sets `answers` is scored
+ *   against — must match whatever variant the respondent was actually
+ *   served (see data/constructScenarioVariants.js), since the same
+ *   scenarioId/optionKey pair can carry a different score in each variant.
+ *   null/undefined/unrecognised falls back to TEAM, same as the content
+ *   selection itself.
  * @returns {{
  *   dimensionRaw: Record<string, number>, dimensionPct: Record<string, number>,
  *   deficient: Record<string, boolean>,
  *   dqiRaw: number, dqiPct: number, dqiBand: 'ANCHORED'|'DEVELOPING'|'AT_RISK',
  * }}
  */
-export function computeConstruct(answers) {
+export function computeConstruct(answers, leadershipScope) {
+  const scenarioById = CONSTRUCT_SCENARIO_BY_ID_BY_SCOPE[leadershipScope]
+    || CONSTRUCT_SCENARIO_BY_ID_BY_SCOPE[DEFAULT_LEADERSHIP_SCOPE]
   const raw = { UPEKSHA: 0, ANUVIGNA: 0, ANASAKTI: 0, VIVEKA: 0 }
 
   for (const { scenarioId, optionKey } of answers) {
-    const scenario = CONSTRUCT_SCENARIO_BY_ID.get(scenarioId)
+    const scenario = scenarioById.get(scenarioId)
     if (!scenario) {
       throw new Error(`computeConstruct: unknown scenario id "${scenarioId}"`)
     }

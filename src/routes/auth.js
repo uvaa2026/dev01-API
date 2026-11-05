@@ -154,7 +154,7 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
 
       const respondentResult = await client.query(
         `INSERT INTO respondents
-           (organisation_id, full_name, email, industry_vertical, career_stage_code, experience_range, department,
+           (organisation_id, full_name, email, industry_vertical, leadership_scope, experience_range, department,
             consent_assessment, consent_facilitator, consent_org_admin, roster_entry_id, approval_status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING respondent_id`,
@@ -163,7 +163,7 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
           data.fullName,
           data.email,
           data.vertical,
-          data.careerStage,
+          data.leadershipScope,
           String(data.experience),
           data.department || null,
           data.consent.processing,
@@ -475,7 +475,7 @@ authRouter.post('/logout', (req, res) => {
 // ---------------------------------------------------------------------------
 authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   const result = await pool.query(
-    `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.career_stage_code,
+    `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.leadership_scope,
             r.experience_range, r.department, r.is_admin, o.name AS organisation_name,
             uc.is_email_verified, uc.last_login_at,
             oc.org_id AS org_admin_of
@@ -500,7 +500,11 @@ authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
       fullName: row.full_name,
       email: row.email,
       vertical: row.industry_vertical,
-      careerStage: row.career_stage_code,
+      // null for any respondent registered before migration 024 — the
+      // frontend/scoring layer both treat that the same as 'TEAM' (see
+      // data/constructScenarioVariants.js), so it's passed through as-is
+      // rather than defaulted here.
+      leadershipScope: row.leadership_scope,
       experience: row.experience_range,
       department: row.department,
       organisationName: row.organisation_name,

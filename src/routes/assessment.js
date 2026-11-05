@@ -294,7 +294,14 @@ assessmentRouter.post('/construct', asyncHandler(async (req, res) => {
     })
   }
 
-  const scoring = computeConstruct(parsed.data.answers)
+  // The respondent must be scored against the exact scenario content they
+  // were actually served (their leadership_scope selects it client-side —
+  // see data/constructScenarioVariants.js) — a mismatch here would silently
+  // score some answers against the wrong scenario's point values.
+  const scopeResult = await pool.query('SELECT leadership_scope FROM respondents WHERE respondent_id = $1', [req.user.sub])
+  const leadershipScope = scopeResult.rows[0]?.leadership_scope
+
+  const scoring = computeConstruct(parsed.data.answers, leadershipScope)
 
   const result = await pool.query(
     `INSERT INTO construct_responses

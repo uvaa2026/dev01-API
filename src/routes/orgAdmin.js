@@ -151,7 +151,7 @@ orgAdminRouter.get('/participants', asyncHandler(async (req, res) => {
 orgAdminRouter.get('/participants/:id', asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT r.respondent_id, r.full_name, r.email, r.approval_status, r.consent_org_admin, r.created_at,
-            r.industry_vertical, r.career_stage_code, r.experience_range, r.department,
+            r.industry_vertical, r.leadership_scope, r.experience_range, r.department,
             uc.is_email_verified, uc.last_login_at,
             gr.sattva_count, gr.rajas_count, gr.tamas_count, gr.dominance, gr.provisional,
             gr.tpe_raw, gr.tpe_index, gr.scored_at AS guna_scored_at,
@@ -218,7 +218,7 @@ orgAdminRouter.get('/participants/:id', asyncHandler(async (req, res) => {
     ...base,
     profile: {
       vertical: row.industry_vertical,
-      careerStage: row.career_stage_code,
+      leadershipScope: row.leadership_scope,
       experience: row.experience_range,
       department: row.department,
     },

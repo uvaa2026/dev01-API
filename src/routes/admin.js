@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/requireAuth.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { GUNA_VIGNETTES } from '../data/gunaVignettes.js'
-import { CONSTRUCT_SCENARIOS } from '../data/constructScenarios.js'
+import { getConstructScenarios } from '../data/constructScenarioVariants.js'
 import { computePattern, DIMENSION_RAW_COLUMN, CAPACITY_NAME, classifyCapacityBand, capacityLine } from '../lib/scoring.js'
 
 export const adminRouter = Router()
@@ -22,7 +22,7 @@ adminRouter.use(requireAuth, requireAdmin)
 // ---------------------------------------------------------------------------
 adminRouter.get('/users', asyncHandler(async (req, res) => {
   const result = await pool.query(
-    `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.career_stage_code,
+    `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.leadership_scope,
             r.experience_range, r.created_at, o.name AS organisation_name,
             uc.is_email_verified, uc.last_login_at,
             gr.submitted_at AS guna_submitted_at,
@@ -44,7 +44,7 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
     email: row.email,
     organisationName: row.organisation_name,
     vertical: row.industry_vertical,
-    careerStage: row.career_stage_code,
+    leadershipScope: row.leadership_scope,
     experience: row.experience_range,
     isEmailVerified: row.is_email_verified,
     lastLoginAt: row.last_login_at,
@@ -70,7 +70,7 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
   }
 
   const result = await pool.query(
-    `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.career_stage_code,
+    `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.leadership_scope,
             r.experience_range, r.department, r.created_at, o.name AS organisation_name,
             uc.is_email_verified, uc.last_login_at,
             gr.submitted_at AS guna_submitted_at,
@@ -97,7 +97,7 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
       email: row.email,
       organisationName: row.organisation_name,
       vertical: row.industry_vertical,
-      careerStage: row.career_stage_code,
+      leadershipScope: row.leadership_scope,
       experience: row.experience_range,
       department: row.department,
       isEmailVerified: row.is_email_verified,
@@ -175,6 +175,12 @@ adminRouter.get('/users/:id/guna', asyncHandler(async (req, res) => {
 // GET /admin/users/:id/construct — mirrors /guna above: the computed DQI /
 // dimension result plus a per-scenario review (situation + all four options
 // next to what this respondent picked). Never exposed to the respondent.
+//
+// The review must be built from the SAME scenario content set the
+// respondent actually answered (their leadership_scope — see
+// data/constructScenarioVariants.js) — otherwise a Function/Business Unit
+// respondent's review would silently show the default Team scenario text
+// next to an answer key that doesn't correspond to it.
 // ---------------------------------------------------------------------------
 adminRouter.get('/users/:id/construct', asyncHandler(async (req, res) => {
   if (req.params.id === req.user.sub) {
@@ -182,10 +188,11 @@ adminRouter.get('/users/:id/construct', asyncHandler(async (req, res) => {
   }
 
   const result = await pool.query(
-    `SELECT answers, submitted_at, upeksha_raw, anuvigna_raw, anasakti_raw, viveka_raw,
-            dqi_raw, dqi_pct, dqi_band, scored_at
-     FROM construct_responses
-     WHERE respondent_id = $1`,
+    `SELECT cr.answers, cr.submitted_at, cr.upeksha_raw, cr.anuvigna_raw, cr.anasakti_raw, cr.viveka_raw,
+            cr.dqi_raw, cr.dqi_pct, cr.dqi_band, cr.scored_at, r.leadership_scope
+     FROM construct_responses cr
+     JOIN respondents r ON r.respondent_id = cr.respondent_id
+     WHERE cr.respondent_id = $1`,
     [req.params.id],
   )
 
@@ -203,7 +210,7 @@ adminRouter.get('/users/:id/construct', asyncHandler(async (req, res) => {
     dimensionPct[dim] = Math.round((((row[col] - 8) / 16) * 100) * 100) / 100
   }
 
-  const review = CONSTRUCT_SCENARIOS.map((s) => {
+  const review = getConstructScenarios(row.leadership_scope).map((s) => {
     const selectedKey = selectedKeyByScenario.get(s.id) || null
     const selectedOption = s.options.find((o) => o.key === selectedKey) || null
     return {

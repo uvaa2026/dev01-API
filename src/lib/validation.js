@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 // Mirrors the fields collected by the React app's Register.jsx / Login.jsx
-// (see uvaa-webapp/src/pages/Register.jsx and src/data/careerStages.js).
+// (see uvaa-webapp/src/pages/Register.jsx and src/data/leadershipScope.js).
 // Keeping the enum values identical between frontend and backend matters —
-// if you add a vertical or career stage, update both.
+// if you add a vertical or leadership scope option, update both.
 //
 // Participant registration is now code-first: there is no more free-text
 // `organisation` field. `vertical` here is the RESPONDENT's own
@@ -27,8 +27,12 @@ export const registerSchema = z.object({
   vertical: z.enum(['IT_TECH', 'EDUCATION', 'OTHERS'], {
     errorMap: () => ({ message: 'Select your industry' }),
   }),
-  careerStage: z.enum(['EC', 'MC', 'SP', 'LS'], {
-    errorMap: () => ({ message: 'Select your career stage' }),
+  // Replaced the old 4-option "career stage" dropdown (EC/MC/SP/LS) as of
+  // migration 024 — also selects which of the three Construct/ECM
+  // 32-scenario content sets this respondent is served and scored against
+  // (see data/constructScenarioVariants.js).
+  leadershipScope: z.enum(['TEAM', 'FUNCTION', 'BUSINESS_UNIT'], {
+    errorMap: () => ({ message: 'Select what best describes what you lead' }),
   }),
   // Was a dropdown of range codes (lt1/1-3/3-5/5-8/8-12/12plus); Register.jsx
   // now collects this as a plain number input, so coerce the numeric string
