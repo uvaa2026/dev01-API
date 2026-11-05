@@ -21,6 +21,8 @@ import {
   GUNA_DOMINANCE_PROFILE,
   DQI_BAND_CALLOUT,
   buildDevelopmentFocus,
+  getGunaContent,
+  getConstructContent,
 } from '../lib/scoring.js'
 
 export const assessmentRouter = Router()
@@ -155,6 +157,16 @@ assessmentRouter.get('/guna', asyncHandler(async (req, res) => {
   return res.status(200).json({ submitted: false, answers: [], submittedAt: null, draft, expired })
 }))
 
+// GET /assessment/guna/content — the 15 vignettes' question text only (id,
+// title, prompt, option key+text per vignette). Deliberately never includes
+// `guna`/`score` — see lib/scoring.js's getGunaContent() for why those must
+// stay server-side. Gated by requireAuth (applied to the whole router
+// above), same as every other route here, so this can't be scraped without
+// a valid session either.
+assessmentRouter.get('/guna/content', asyncHandler(async (req, res) => {
+  return res.status(200).json({ vignettes: getGunaContent() })
+}))
+
 // PATCH /assessment/guna/draft — saves partial progress. Called on every
 // answer and on explicit "Save draft" clicks (FR-17).
 assessmentRouter.patch('/guna/draft', asyncHandler(async (req, res) => {
@@ -262,6 +274,23 @@ assessmentRouter.get('/construct', asyncHandler(async (req, res) => {
 
   const { draft, expired } = await loadDraft(req.user.sub, 'CONSTRUCT')
   return res.status(200).json({ locked: false, submitted: false, answers: [], submittedAt: null, draft, expired })
+}))
+
+// GET /assessment/construct/content — this respondent's 32 scenarios'
+// question text only (id, situation, option key+text). Resolves
+// leadership_scope server-side, the same lookup POST /construct uses, so
+// the content served always matches what the submission will be scored
+// against — the frontend never needs to know or send the scope itself.
+// Strips `dimension` and each option's `score`; see getConstructContent().
+// Gated the same way the submit/draft endpoints are (Guna must be done
+// first), so this can't be used to peek at stage two before stage one.
+assessmentRouter.get('/construct/content', asyncHandler(async (req, res) => {
+  if (!(await requireGunaSubmitted(req, res))) return
+
+  const scopeResult = await pool.query('SELECT leadership_scope FROM respondents WHERE respondent_id = $1', [req.user.sub])
+  const leadershipScope = scopeResult.rows[0]?.leadership_scope
+
+  return res.status(200).json({ scenarios: getConstructContent(leadershipScope) })
 }))
 
 assessmentRouter.patch('/construct/draft', asyncHandler(async (req, res) => {

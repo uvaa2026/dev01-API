@@ -7,6 +7,7 @@ import { generateCohortCode, normalizeCohortCode } from '../lib/cohortCode.js'
 import { sendVerificationEmail, sendCohortCodeEmail } from '../lib/email.js'
 import { orgRegisterSchema, verifySchema, loginSchema, formatZodError } from '../lib/validation.js'
 import { requireAuth } from '../middleware/requireAuth.js'
+import { rateLimit } from '../middleware/rateLimit.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 
 export const organisationsRouter = Router()
@@ -16,6 +17,22 @@ const UNIQUE_VIOLATION = '23505'
 const MAX_CODE_ATTEMPTS = 10
 const MAX_FAILED_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
+
+// Cohort codes are 4 random + DDMMYY + 2 random chars (cohortCode.js) — not
+// secret exactly, but not meant to be guessable at scale either. Without a
+// per-IP limit, /lookup is pure reconnaissance: a script can hammer it to
+// find valid codes or confirm org names. loginLimiter mirrors auth.js's
+// backstop against credential stuffing, scoped to this router's own login.
+const lookupLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  message: 'Too many cohort code lookups from this address. Please wait a while and try again.',
+})
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many login attempts from this address. Please wait a while and try again.',
+})
 
 // ---------------------------------------------------------------------------
 // POST /org/register
@@ -238,7 +255,7 @@ organisationsRouter.post('/verify', asyncHandler(async (req, res) => {
 //   whether the email must already be on a pre-loaded roster). Never
 //   returns seat counts or contact details.
 // ---------------------------------------------------------------------------
-organisationsRouter.get('/lookup', asyncHandler(async (req, res) => {
+organisationsRouter.get('/lookup', lookupLimiter, asyncHandler(async (req, res) => {
   const code = normalizeCohortCode(req.query.code)
   if (!code) {
     return res.status(400).json({ message: 'Enter a cohort code.' })
@@ -286,7 +303,7 @@ organisationsRouter.get('/lookup', asyncHandler(async (req, res) => {
 //   req.orgId directly from the contact id, without needing a respondent
 //   row to exist at all.
 // ---------------------------------------------------------------------------
-organisationsRouter.post('/login', asyncHandler(async (req, res) => {
+organisationsRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ message: 'Enter a valid email and password.' })

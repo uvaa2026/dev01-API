@@ -27,6 +27,30 @@ const GUNA_ITEM_SCORE = { SATTVA: 3, RAJAS: 2, TAMAS: 1 }
 // report spec, "Dominance always resolves to the highest count" regardless.
 const GUNA_DOMINANCE_THRESHOLD = 8
 
+// ---------------------------------------------------------------------------
+// Respondent-facing content (no scoring key). GunaProfiler.jsx and
+// ConstructAssessment.jsx need only the question text and option text/keys
+// to render a quiz and record an answer — `guna`/`score`/`dimension` exist
+// purely for computeTpe/computeConstruct below, and must never reach the
+// browser: shipping them in a frontend-bundled data file (the previous
+// approach) means anyone can read the full answer key out of the network
+// tab without logging in. These endpoints (wired up in routes/assessment.js)
+// are the replacement — authenticated, and stripped here, server-side only.
+// Memoized since the underlying data is static for the life of the process.
+// ---------------------------------------------------------------------------
+let cachedGunaContent = null
+export function getGunaContent() {
+  if (!cachedGunaContent) {
+    cachedGunaContent = GUNA_VIGNETTES.map((v) => ({
+      id: v.id,
+      title: v.title,
+      prompt: v.prompt,
+      options: v.options.map(({ key, text }) => ({ key, text })),
+    }))
+  }
+  return cachedGunaContent
+}
+
 /**
  * @param {{ vignetteId: string, optionKey: 'A'|'B'|'C' }[]} answers - exactly
  *   15 entries, already validated by gunaSubmissionSchema (all ids present,
@@ -182,6 +206,25 @@ const CONSTRUCT_SCENARIO_BY_ID_BY_SCOPE = Object.fromEntries(
     new Map(scenarios.map((s) => [s.id, s])),
   ]),
 )
+
+// Respondent-facing content for the Construct/ECM quiz — same reasoning as
+// getGunaContent() above, strips `dimension` (scenario-level) and `score`
+// (per option) and resolves the caller's own leadership_scope the same way
+// computeConstruct does (unrecognised/null falls back to
+// DEFAULT_LEADERSHIP_SCOPE), so a respondent always gets the content their
+// submission will actually be scored against.
+const constructContentCache = new Map()
+export function getConstructContent(leadershipScope) {
+  const scope = CONSTRUCT_SCENARIOS_BY_SCOPE[leadershipScope] ? leadershipScope : DEFAULT_LEADERSHIP_SCOPE
+  if (!constructContentCache.has(scope)) {
+    constructContentCache.set(scope, CONSTRUCT_SCENARIOS_BY_SCOPE[scope].map((s) => ({
+      id: s.id,
+      situation: s.situation,
+      options: s.options.map(({ key, text }) => ({ key, text })),
+    })))
+  }
+  return constructContentCache.get(scope)
+}
 
 const DIMENSIONS = ['UPEKSHA', 'ANUVIGNA', 'ANASAKTI', 'VIVEKA']
 // Maps a dimension to the *_raw column name used across the API (routes,

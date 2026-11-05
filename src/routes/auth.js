@@ -14,6 +14,7 @@ import {
   formatZodError,
 } from '../lib/validation.js'
 import { requireAuth } from '../middleware/requireAuth.js'
+import { rateLimit } from '../middleware/rateLimit.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 
 export const authRouter = Router()
@@ -22,6 +23,23 @@ const MAX_FAILED_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
 const VERIFICATION_TOKEN_HOURS = 24
 const RESET_TOKEN_MINUTES = 60
+
+// Per-account lockout (MAX_FAILED_ATTEMPTS above) stops one account being
+// hammered, but does nothing against credential stuffing — one password
+// tried against many different email addresses from a single source. This
+// is the per-IP backstop for that, plus forgot-password's own limiter
+// below (that route has no account-lockout concept at all, so without
+// this it could be used to mail-bomb a target's inbox or burn SMTP quota).
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many login attempts from this address. Please wait a while and try again.',
+})
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many password reset requests from this address. Please wait 15 minutes and try again.',
+})
 
 const UNIQUE_VIOLATION = '23505'
 
@@ -290,7 +308,7 @@ authRouter.post('/verify', asyncHandler(async (req, res) => {
 // matches an account, so this endpoint can't be used to probe which emails
 // are registered (same reasoning as login's "Invalid email or password").
 // ---------------------------------------------------------------------------
-authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
+authRouter.post('/forgot-password', forgotPasswordLimiter, asyncHandler(async (req, res) => {
   const parsed = forgotPasswordSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ message: 'Enter a valid email address.' })
@@ -384,7 +402,7 @@ authRouter.post('/reset-password', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /auth/login
 // ---------------------------------------------------------------------------
-authRouter.post('/login', asyncHandler(async (req, res) => {
+authRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ message: 'Enter a valid email and password.' })
