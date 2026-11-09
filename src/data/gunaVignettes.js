@@ -1,36 +1,32 @@
-// Server-side copy of the real UVAA/TPE Guna Profiler content — 15
-// vignettes, extracted from
-// UVAA_TPE_ScoringMaster_with_key_V2_Final_301026.docx ("Guna Profiler,
-// 15 Vignettes" — V2 Final, 30 October 2026). Duplicated from
-// uvaa-webapp/src/data/gunaVignettes.js rather than shared across
-// packages — keep both in sync if a vignette or its guna/score ever
-// changes (same convention as GUNA_VIGNETTE_IDS in lib/validation.js).
+// Real UVAA/TPE Guna Profiler content — 15 vignettes, extracted from
+// UVAA_TPE_15_081126_Final4upload.docx ("Core Orientation, 15 Vignettes" —
+// for upload, 8 November 2026 — Indian Patent Application No. 202641076718,
+// Publication No. 27/2026).
 //
-// Applied 2026-10-31: this is a full content revision over the prior
-// UVAA_TPE_ScoringMaster_V6_170826.docx — all 15 vignettes were
-// regenerated from the new document (title, prompt, and all three
-// options' text/guna/score), not hand patched. `id` values were kept
-// stable (same vignette-position slugs as before) even though several
-// titles changed materially, so GUNA_VIGNETTE_IDS in lib/validation.js
-// did not need to change and any already-submitted respondent's stored
-// TPE score is unaffected — scoring happens once at submission time and
-// is persisted (guna_responses table), not recomputed from this file on
-// every read. The one exception is the admin "review answers" screen,
-// which looks up vignette/option text live by id+key — for a respondent
-// who submitted before this revision, it will now show the new option
-// wording next to their historical choice, not the wording they actually
-// saw. Each vignette has exactly one option scored Sattva=3, Rajas=2,
-// Tamas=1, cross-checked programmatically against the source document.
+// Applied 2026-11-09: full content revision over the prior
+// UVAA_TPE_ScoringMaster_with_key_V2_Final_301026.docx-sourced content —
+// every vignette's title/prompt/options was regenerated from this new
+// document, not hand patched. `id` values were kept stable (same
+// vignette-position slugs as before) even though most titles/prompts/option
+// wording changed, so GUNA_VIGNETTE_IDS in uvaa-api/src/lib/validation.js
+// did not need to change. Each vignette has exactly one option scored
+// Sattva=3, Rajas=2, Tamas=1, cross-checked programmatically against the
+// source document.
 //
-// This copy is what actually computes results: src/lib/scoring.js reads
-// the `guna`/`score` fields to turn a respondent's option picks into a
-// TPE dominance + index (Scoring Guide v5, section 2). It's also what the
-// admin "review answers" endpoint uses to show each vignette's prompt and
-// option text next to what the respondent chose.
+// Scoring (kept here for when a scoring pass is built — nothing in the UI
+// computes or shows this today; answers are stored raw and scored later):
+//   TPE_raw   = sum of the 15 selected option scores        range 15-45
+//   TPE_index = ((TPE_raw - 15) / 30) * 100                 range 0-100
 //
-// The respondent-facing UI never sees `guna`/`score` while answering —
-// this file exists on the API only, not sent to the browser during the
-// quiz itself.
+// Deliberately never shows `guna` or `score` to the respondent while they
+// answer — the FRD requires responses to stay unprimed by the framework.
+// This file is backend-only: GunaProfiler.jsx no longer imports it directly
+// — it fetches question content (no guna/score) from GET
+// /assessment/guna/content, which strips those fields server-side via
+// lib/scoring.js's getGunaContent(). Scoring is computed once at submission
+// time and persisted — a respondent who already submitted under the prior
+// content keeps their original score; this change only affects respondents
+// who submit from this point on.
 
 export const GUNA_VIGNETTES = [
   {
@@ -39,7 +35,7 @@ export const GUNA_VIGNETTES = [
     prompt: "You are about to commit to something that will affect several people around you. Someone who has done this before is nearby and free. You could also just go ahead.",
     options: [
       { key: "A", text: "You go ahead now. The checking can happen once it is moving.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You go over first and set out what you are planning and why.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You go over first and set out what you are planning.", guna: "SATTVA", score: 3 },
       { key: "C", text: "You hold off deciding for now. Nothing is committed either way.", guna: "TAMAS", score: 1 },
     ],
   },
@@ -48,17 +44,17 @@ export const GUNA_VIGNETTES = [
     title: "A closing window",
     prompt: "You are about to commit to an investment. The returns look uncertain, but the offer is attractive and the window closes this week.",
     options: [
-      { key: "A", text: "You commit now. Offer looks good and the window matters.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You commit without working it through, and it is done.", guna: "TAMAS", score: 1 },
-      { key: "C", text: "You work out what it returns against what it costs.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You commit now, while the window is still open to you.", guna: "RAJAS", score: 2 },
+      { key: "B", text: "You let the window close. Nothing is decided either way.", guna: "TAMAS", score: 1 },
+      { key: "C", text: "You work it through properly, and the evening goes on that.", guna: "SATTVA", score: 3 },
     ],
   },
   {
     id: "when-the-motivation-goes",
     title: "The energy has gone",
-    prompt: "You started something six weeks ago and the enthusiasm with which you began has gone. Nobody would notice if you quietly let it drop.",
+    prompt: "You started something six weeks ago and the energy with which you began has gone. Nobody would notice if you quietly let it drop.",
     options: [
-      { key: "A", text: "You carry on at the same pace. The work is the same.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You carry on at the same pace, whether the energy is there or not.", guna: "SATTVA", score: 3 },
       { key: "B", text: "You put it aside and start something that has more in it for you.", guna: "RAJAS", score: 2 },
       { key: "C", text: "You let it drop quietly. Nothing further is done on it at all.", guna: "TAMAS", score: 1 },
     ],
@@ -89,7 +85,7 @@ export const GUNA_VIGNETTES = [
     prompt: "The thing you spent two years working toward has finally come through. It is the middle of an ordinary week and nobody has mentioned it since this morning.",
     options: [
       { key: "A", text: "You are already planning the next one before this has settled.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You take time to get this in properly first. What is next can wait.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You take it in properly first, before what is next.", guna: "SATTVA", score: 3 },
       { key: "C", text: "You barely register it. The week goes on as the others did.", guna: "TAMAS", score: 1 },
     ],
   },
@@ -108,18 +104,18 @@ export const GUNA_VIGNETTES = [
     title: "Asked what happened",
     prompt: "Something has gone badly wrong. Other people's choices contributed to it and so did two of your own. You are the one being asked what happened.",
     options: [
-      { key: "A", text: "You put it down to bad luck. These things happen and there is nothing to learn. You put it down to bad luck and the matter is left there.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You focus on what the others decided and yours too, in detail and at once.", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You look at the choices and consequences and present the learning ,", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You put it down to bad luck. These things happen and there is nothing to learn.", guna: "TAMAS", score: 1 },
+      { key: "B", text: "You focus on what the others decided, in detail and at once.", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You look at what happened and set out all of it, your own part included.", guna: "SATTVA", score: 3 },
     ],
   },
   {
     id: "something-disrupts-it",
     title: "At your expense",
-    prompt: "Someone has been making remarks at your expense in front of others. Each one is framed as a joke and people laugh. It has been going on for weeks.",
+    prompt: "Someone you see regularly has been making remarks at your expense in front of others. Each one is framed as a joke and people laugh. It has been going on for weeks.",
     options: [
       { key: "A", text: "You start giving it back in the same register. It escalates quietly over a fortnight.", guna: "RAJAS", score: 2 },
-      { key: "B", text: "You speak to them directly, say how it lands, and ask what can change.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You speak to them directly and say how it lands.", guna: "SATTVA", score: 3 },
       { key: "C", text: "You say nothing each time. You take less part in those conversations.", guna: "TAMAS", score: 1 },
     ],
   },
@@ -129,8 +125,8 @@ export const GUNA_VIGNETTES = [
     prompt: "Something cancels and the rest of the day is suddenly clear. Nothing is expected of you until tomorrow.",
     options: [
       { key: "A", text: "You fill it with whatever is nearest to hand, and the time goes.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You fill it with work you had not planned to do today.", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You use part of it on something you have been putting off.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You fill all of it with work you had not planned to do today.", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You use part of it on something you have been putting off for a while.", guna: "SATTVA", score: 3 },
     ],
   },
   {
@@ -138,8 +134,8 @@ export const GUNA_VIGNETTES = [
     title: "It may not go your way",
     prompt: "You are partway through something where the outcome is genuinely uncertain. It may well not go your way, and that will not be down to anything you did.",
     options: [
-      { key: "A", text: ". You ease off a little. No sense giving everything to something that may not land.", guna: "TAMAS", score: 1 },
-      { key: "B", text: ". You do it as well as you can. The outcome is not yours to own.", guna: "SATTVA", score: 3 },
+      { key: "A", text: "You ease off a little. No sense giving everything to something that may not land.", guna: "TAMAS", score: 1 },
+      { key: "B", text: "You do it as well as you can, whatever the outcome.", guna: "SATTVA", score: 3 },
       { key: "C", text: "You put more into it than you planned to. Effort is the part you control.", guna: "RAJAS", score: 2 },
     ],
   },
@@ -159,8 +155,8 @@ export const GUNA_VIGNETTES = [
     prompt: "You have achieved something you set out a long time ago to reach. It is done and it is yours.",
     options: [
       { key: "A", text: "You move on to whatever is next without marking it at all.", guna: "TAMAS", score: 1 },
-      { key: "B", text: "You look around to see what others have managed to get", guna: "RAJAS", score: 2 },
-      { key: "C", text: "You stop long enough to register that you have arrived somewhere.", guna: "SATTVA", score: 3 },
+      { key: "B", text: "You look around to see what others have managed to get for themselves.", guna: "RAJAS", score: 2 },
+      { key: "C", text: "You stop long enough to register you have arrived.", guna: "SATTVA", score: 3 },
     ],
   },
   {
@@ -169,7 +165,7 @@ export const GUNA_VIGNETTES = [
     prompt: "Something that used to be the best part of your life has slowly become the part you dread. Nothing about it changed.",
     options: [
       { key: "A", text: "You look at it directly and decide whether it still belongs in your life.", guna: "SATTVA", score: 3 },
-      { key: "B", text: "You carry on with it, without asking why you do.", guna: "TAMAS", score: 1 },
+      { key: "B", text: "You carry on with it much as before, without ever asking why you do.", guna: "TAMAS", score: 1 },
       { key: "C", text: "You hold onto it and put more in, to get back what it was.", guna: "RAJAS", score: 2 },
     ],
   },
