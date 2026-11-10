@@ -1,5 +1,16 @@
 import { z } from 'zod'
 
+// Shared by every endpoint that sets a password (register, org register,
+// reset-password) — minimum 8 characters, at least one capital letter, at
+// least one number. Mirrors the frontend's `pattern` attribute
+// ((?=.*[A-Z])(?=.*[0-9]).{8,}) on every password input in Register.jsx,
+// OrgRegister.jsx and ResetPassword.jsx; this is the enforcement that
+// actually matters since the frontend check can always be bypassed.
+const passwordSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[A-Z]/, 'Password must include at least one capital letter')
+  .regex(/[0-9]/, 'Password must include at least one number')
+
 // Mirrors the fields collected by the React app's Register.jsx / Login.jsx
 // (see uvaa-webapp/src/pages/Register.jsx and src/data/leadershipScope.js).
 // Keeping the enum values identical between frontend and backend matters —
@@ -23,7 +34,7 @@ export const registerSchema = z.object({
   cohortCode: z.string().trim().min(1, "Enter your organisation's cohort code"),
   fullName: z.string().trim().min(1, 'Full name is required').max(200),
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: passwordSchema,
   vertical: z.enum(['IT_TECH', 'EDUCATION', 'OTHERS'], {
     errorMap: () => ({ message: 'Select your industry' }),
   }),
@@ -79,7 +90,7 @@ const orgContactSchema = z.object({
 // organisation_contact_credentials) — so, unlike the Facilitator contact,
 // they set a password at org registration time.
 const orgAdminContactSchema = orgContactSchema.extend({
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: passwordSchema,
 })
 
 // Mirrors the org registration form (OrgRegister.jsx): organisation
@@ -184,7 +195,7 @@ export const forgotPasswordSchema = z.object({
 // POST /auth/reset-password — same 8-char minimum as registerSchema.password.
 export const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Missing reset token'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: passwordSchema,
 })
 
 // The 15 Guna Profiler vignette ids (UVAA_TPE_ScoringMaster_V6). Duplicated
