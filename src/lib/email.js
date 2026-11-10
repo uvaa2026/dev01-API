@@ -97,6 +97,41 @@ export async function sendPasswordResetEmail({ to, fullName, resetUrl }) {
   return info
 }
 
+// Notifies the UVAA team of a new inquiry from Home's public Contact form
+// (#contact) — there's no admin inbox view for contact_inquiries yet, so
+// this email (plus the row itself, see migration 025) is the actual
+// notification. Unlike the functions above, this one is To the UVAA team,
+// not the person who filled the form — fullName/workEmail/etc. are the
+// inquirer's details, presented for the team to act on.
+export async function sendContactInquiryEmail({ fullName, workEmail, organisation, role, interest, message }) {
+  const to = 'sayee@dheemerconsulting.com'
+  const info = await getTransporter().sendMail({
+    from: config.smtp.from,
+    to,
+    replyTo: workEmail,
+    subject: `New UVAA inquiry — ${organisation}`,
+    text: `New inquiry from the UVAA Home contact form.\n\nName: ${fullName}\nWork email: ${workEmail}\nOrganisation: ${organisation}\nRole: ${role}\nInterested in: ${interest}\n\nMessage:\n${message || '(none)'}\n`,
+    html: `
+      <p>New inquiry from the UVAA Home contact form.</p>
+      <table cellpadding="4" cellspacing="0">
+        <tr><td><strong>Name</strong></td><td>${escapeHtml(fullName)}</td></tr>
+        <tr><td><strong>Work email</strong></td><td><a href="mailto:${escapeHtml(workEmail)}">${escapeHtml(workEmail)}</a></td></tr>
+        <tr><td><strong>Organisation</strong></td><td>${escapeHtml(organisation)}</td></tr>
+        <tr><td><strong>Role</strong></td><td>${escapeHtml(role)}</td></tr>
+        <tr><td><strong>Interested in</strong></td><td>${escapeHtml(interest)}</td></tr>
+      </table>
+      <p><strong>Message</strong></p>
+      <p>${message ? escapeHtml(message).replaceAll('\n', '<br>') : '(none)'}</p>
+    `,
+  })
+
+  if (!config.smtp.host) {
+    console.log(`\n[dev email] SMTP not configured — contact inquiry from ${workEmail} (${organisation})\n`)
+  }
+
+  return info
+}
+
 function escapeHtml(str) {
   return String(str)
     .replaceAll('&', '&amp;')

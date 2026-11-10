@@ -336,6 +336,19 @@ export const constructDraftSchema = z.object({
   currentIndex: z.number().int().min(0).max(CONSTRUCT_SCENARIO_IDS.length - 1).optional().default(0),
 })
 
+// POST /contact — the public "Let's start a conversation" form on Home
+// (Welcome.jsx #contact). Deliberately separate from registerSchema /
+// orgRegisterSchema above: this is a pre-registration inbound inquiry, not
+// an account — no password, no cohort code, no consent block.
+export const contactSchema = z.object({
+  fullName: z.string().trim().min(1, 'Full name is required').max(200),
+  workEmail: z.string().trim().toLowerCase().email('Enter a valid email address'),
+  organisation: z.string().trim().min(1, 'Organisation is required').max(200),
+  role: z.string().trim().min(1, 'Select your role').max(120),
+  interest: z.string().trim().min(1, 'Select what you would like to explore').max(200),
+  message: z.string().trim().max(4000).optional().or(z.literal('')),
+})
+
 // Turns a ZodError into { field: message } the frontend can render next to
 // the relevant input, rather than a flat list.
 export function formatZodError(error) {

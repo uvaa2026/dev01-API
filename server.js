@@ -7,6 +7,7 @@ import { assessmentRouter } from './src/routes/assessment.js'
 import { adminRouter } from './src/routes/admin.js'
 import { organisationsRouter } from './src/routes/organisations.js'
 import { orgAdminRouter } from './src/routes/orgAdmin.js'
+import { contactRouter } from './src/routes/contact.js'
 
 const app = express()
 
@@ -28,6 +29,7 @@ app.use('/assessment', assessmentRouter)
 app.use('/admin', adminRouter)
 app.use('/org', organisationsRouter)
 app.use('/org-admin', orgAdminRouter)
+app.use('/contact', contactRouter)
 
 // Centralised error handler — catches anything thrown/rejected inside a
 // route that wasn't already handled, so a bug returns a clean 500 instead
