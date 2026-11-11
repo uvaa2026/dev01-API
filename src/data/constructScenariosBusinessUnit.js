@@ -19,6 +19,11 @@
 // dimension, every option's "<score> <label>" pair internally consistent
 // (3 Anchored / 2 Reactive / 1 Avoidant) across all 32 scenarios.
 //
+// Updated 9 November 2026 from UVAA_3_LS_32_091126_Final4upload_Revision.docx
+// — a wording-only revision (15 of the 32 scenarios touched: clearer
+// phrasing, a couple of fixed inconsistencies, no id/dimension/score
+// changes). Re-parsed and cross-checked the same way as the original.
+//
 // DIMENSION_LABELS is not re-exported here — import it from
 // constructScenarios.js, which stays the single source for that mapping.
 //
@@ -56,7 +61,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
     options: [
       { key: 'A', text: 'You keep the week as it is. You tell your family you will make the next one, and you intend to.', score: 2 },
       { key: 'B', text: 'You decide closer to the day, once you can see how the week has gone. The pattern repeats next quarter.', score: 1 },
-      { key: 'C', text: 'You hold the commitment and move the two work items. One of them lands on someone else.', score: 3 },
+      { key: 'C', text: 'You hold the commitment and move the two work items. One of them you move it to someone else.', score: 3 },
     ],
   },
   {
@@ -72,7 +77,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
   {
     id: 'up-05',
     dimension: 'UPEKSHA',
-    situation: 'A launch you fronted has gone well and the early numbers are good. Internally you know it held together because three people worked unreasonable hours for six weeks. Nobody has complained.',
+    situation: 'A launch you fronted has gone well and the early numbers are good. Internally you know , it held together because three people worked unreasonable hours for six weeks. Nobody has complained.',
     options: [
       { key: 'A', text: 'You name what it cost those three in the review. You change what the next launch asks of people.', score: 3 },
       { key: 'B', text: 'You recognise the three publicly and give them time off. The next launch runs the same way.', score: 2 },
@@ -95,7 +100,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
     situation: 'One part of your unit is highly profitable and is quietly funding another that has lost money for six quarters. Both report to you. The group sees the combined number, which is good, and nobody has asked.',
     options: [
       { key: 'A', text: 'You put a turnaround plan on the loss-making part. You keep reporting combined while it works.', score: 2 },
-      { key: 'B', text: 'You separate the two in the next review and show what each is doing. The combined number stops protecting you.', score: 3 },
+      { key: 'B', text: 'You separate the two in the next review and show what each is doing. The plan is being put in place.', score: 3 },
       { key: 'C', text: 'You keep reporting the combined number. The question comes when the profitable part has a weaker year.', score: 1 },
     ],
   },
@@ -105,7 +110,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
     situation: 'The organisation has grown fast and works differently now. Some of what made it good has gone and you can name three things. Others point to the growth and say it is worth it. Both readings are true.',
     options: [
       { key: 'A', text: 'You take it as the price of scale. The three things go unsaid and a fourth appears next year.', score: 1 },
-      { key: 'B', text: 'You put both to the executive: what the growth has brought and what it has cost, with the three examples.', score: 3 },
+      { key: 'B', text: 'You put both to the executives / board - what the growth has brought and what it has cost, with the three examples.', score: 3 },
       { key: 'C', text: 'You push to restore what has been lost. The growth case gets argued back at you and little changes.', score: 2 },
     ],
   },
@@ -113,7 +118,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
   {
     id: 'an-01',
     dimension: 'ANUVIGNA',
-    situation: 'In a meeting with the executive / Board and your peers, your numbers are questioned sharply, and the implication is that you have been managing the narrative. Two of the figures have straightforward explanations. One does not and you have not finished looking at it.',
+    situation: 'In a meeting with the executives / board and your peers, your numbers are questioned sharply, and the implication is that you have been managing the narrative. Two of the figures have straightforward explanations. One does not and you have not finished looking at it.',
     options: [
       { key: 'A', text: 'You give all three explanations, including the one you are unsure of. You hold your position in the room.', score: 2 },
       { key: 'B', text: 'You say you will take the questions away and come back fully. The meeting moves on without the explanations.', score: 1 },
@@ -125,7 +130,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
     dimension: 'ANUVIGNA',
     situation: 'The executive of your largest client calls you directly. They are angry about something your unit did, the facts are mostly right, and they say they are reviewing the relationship. The call is ten minutes long .',
     options: [
-      { key: 'A', text: 'You apologise, say you will look into all of it personally, and give no date. They call the chair/executive instead.', score: 1 },
+      { key: 'A', text: 'You apologise, say you will look into all of it personally, and give no date. The call gets escalated further.', score: 1 },
       { key: 'B', text: 'You take it without defending the unit. You get the specifics and commit to a date you can meet.', score: 3 },
       { key: 'C', text: 'You explain what happened and the parts their own side contributed. It is accurate and they are still angry.', score: 2 },
     ],
@@ -143,7 +148,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
   {
     id: 'an-04',
     dimension: 'ANUVIGNA',
-    situation: 'A measure the executive watches has moved against you, and the reason is not yet clear. the executive meeting in four days. Your team has three theories and no evidence for any of them.',
+    situation: 'A measure that is being tracked by the executives has moved against you, and the reason is not yet clear. the executive meeting in four days. Your team has three theories and no evidence for any of them.',
     options: [
       { key: 'A', text: 'You take the executive the movement and the three theories. You say what you are doing to establish which.', score: 3 },
       { key: 'B', text: 'You report the movement and say the analysis is in progress. the executive asks the same question next time.', score: 1 },
@@ -163,7 +168,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
   {
     id: 'an-06',
     dimension: 'ANUVIGNA',
-    situation: 'Someone raises your unit\'s mistakes at every forum, including after your best results. Each point is accurate and each one happened. The pattern is now part of how your unit is seen, and nobody else raises it.',
+    situation: 'Someone raises your unit\'s mistakes at every forum, even after your best results. Each point is accurate and each one happened. The pattern is now part of how your unit is seen, and nobody else raises it.',
     options: [
       { key: 'A', text: 'You accept each point and say nothing about the pattern. It is repeated at the next forum.', score: 1 },
       { key: 'B', text: 'You correct the framing in the forum, setting out what went right alongside what did not.', score: 2 },
@@ -173,7 +178,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
   {
     id: 'an-07',
     dimension: 'ANUVIGNA',
-    situation: 'Revenue has come in eleven percent below plan for the second quarter running. In a group meeting the executive / chair asks, in front of others , whether you still believe the plan was realistic. You wrote it.',
+    situation: 'Revenue has come in eleven percent below plan for the second quarter running. In a group meeting the executives / chair asks, in front of others , whether you still believe the plan was realistic. You wrote it.',
     options: [
       { key: 'A', text: 'You set out the market conditions that moved, with the data, and where the plan still holds.', score: 2 },
       { key: 'B', text: 'You say you will come back with a full review. The question is asked again next quarter.', score: 1 },
@@ -194,17 +199,17 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
   {
     id: 'ak-01',
     dimension: 'ANASAKTI',
-    situation: 'An initiative you championed personally, and defended twice at board/executive level, is eighteen months in. The early signals are not there. Another year would cost a meaningful share of the innovation budget, and you are the person most identified with it.',
+    situation: 'An initiative you championed personally, and defended twice at board or executive level, is eighteen months in. The work has been done and the evidence is clear: it is not going to deliver. Another year would cost a meaningful share of the innovation budget, and you are the person most identified with it.',
     options: [
       { key: 'A', text: 'You propose a reduced version for two more quarters. There is a clear decision point at the end of it.', score: 2 },
-      { key: 'B', text: 'You take the case for stopping to the board or executive. You say that the original case was yours.', score: 3 },
+      { key: 'B', text: 'You take the case for stopping to the board or executive, with what the eighteen months showed. You say the original case was yours.', score: 3 },
       { key: 'C', text: 'You put the evidence up without a recommendation and let the group decide what happens.', score: 1 },
     ],
   },
   {
     id: 'ak-02',
     dimension: 'ANASAKTI',
-    situation: 'A launch carrying your name has underperformed for two quarters. You can see now that the segment choice was wrong and that was your call. The team has worked hard and believes a third quarter will turn it.',
+    situation: 'A launch carrying your name has underperformed for two quarters. The segment choice was wrong and that was your call. The team has worked hard and believes a third quarter will turn it. A third quarter means the people on it miss the next cycle of work entirely.',
     options: [
       { key: 'A', text: 'You stop it and tell the team the segment call was yours. They had believed it would turn.', score: 3 },
       { key: 'B', text: 'You let it run while the team still believes in it. The decision is taken out of your hands at year end.', score: 1 },
@@ -227,7 +232,7 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
     situation: 'The positioning you set two years ago was right then and it is what the unit is known for. The market has moved and a newer approach is winning. Changing means unwinding something you are publicly identified with.',
     options: [
       { key: 'A', text: 'You set out publicly why the position has changed and what replaces it. You name the original as yours.', score: 3 },
-      { key: 'B', text: 'You hold the position and strengthen the case for it. There are still some takers for it.', score: 1 },
+      { key: 'B', text: 'You hold the position and strengthen the case for it. There are few last takers for it.', score: 1 },
       { key: 'C', text: 'You adapt the positioning gradually without calling out the change. The shift reads as continuity.', score: 2 },
     ],
   },
@@ -244,11 +249,11 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
   {
     id: 'ak-06',
     dimension: 'ANASAKTI',
-    situation: 'The idea that has most changed your unit this year came from the person you are developing to replace you. It is being attributed to your leadership in the half-year review going to the executive.',
+    situation: 'The idea that has most changed your unit this year came from the person you are developing to replace you. It is being attributed to your leadership in the half-year review report going to the executive.',
     options: [
-      { key: 'A', text: 'You correct the attribution and name them. the executive reads that paper as your result.', score: 3 },
-      { key: 'B', text: 'You let the paper stand as written. The attribution is the unit\'s and that is how it is read.', score: 1 },
-      { key: 'C', text: 'You let the paper stand. You credit them in your verbal remarks when you present it.', score: 2 },
+      { key: 'A', text: 'You correct the attribution and name them. The executive will still read the report as your record.', score: 3 },
+      { key: 'B', text: 'You let the report stand as written. The attribution is the unit\'s and that is how it is read.', score: 1 },
+      { key: 'C', text: 'You let the report stand. You credit them in your verbal remarks when you present it.', score: 2 },
     ],
   },
   {
@@ -268,17 +273,17 @@ export const CONSTRUCT_SCENARIOS_BUSINESS_UNIT = [
     options: [
       { key: 'A', text: 'You tell them you have stopped growing in the role and ask what comes next.', score: 3 },
       { key: 'B', text: 'You stay and keep delivering. The question comes up again in a year unchanged.', score: 1 },
-      { key: 'C', text: 'You leave without giving real reasons. The details may not matter here.', score: 2 },
+      { key: 'C', text: 'You start looking outside, and say nothing about it until you have somewhere to go.', score: 2 },
     ],
   },
   // ---------------------------------------------------------------------- VIVEKA (Part 4)
   {
     id: 'vk-01',
     dimension: 'VIVEKA',
-    situation: 'The quarter has missed by a margin that needs explaining. One reading fits the facts well, you reached it inside a day, and it points at something outside your control. The executive wants the explanation on Thursday.',
+    situation: 'The quarter has missed by a margin that needs explaining. One reading fits the facts well, some part of it points at something outside your control. The executive wants the explanation the next day.',
     options: [
       { key: 'A', text: 'You give the reading as the cause. It holds up, and the underlying reason surfaces two quarters later.', score: 2 },
-      { key: 'B', text: 'You say the analysis is still running and give no reading. Someone else supplies one before Thursday.', score: 1 },
+      { key: 'B', text: 'You say the analysis is still running and ask for more time. Someone else provides one before the next day.', score: 1 },
       { key: 'C', text: 'You give the reading and say it is the first one that fitted. You set out what you are doing to test it.', score: 3 },
     ],
   },
