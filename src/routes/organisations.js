@@ -355,12 +355,16 @@ organisationsRouter.post('/login', loginLimiter, asyncHandler(async (req, res) =
   )
 
   const token = signSession({ sub: contact.contact_id, email: contact.email, kind: 'ORG_ADMIN' }, { rememberMe })
+  // Cookie kept as a fallback only — see the matching comment in
+  // routes/auth.js's POST /login and middleware/requireAuth.js. The
+  // frontend relies on `token` below, sent back as an Authorization header.
   res.cookie(config.cookieName, token, {
     ...config.sessionCookieOptions,
     maxAge: (rememberMe ? 30 : 0.5) * 24 * 60 * 60 * 1000,
   })
 
   return res.status(200).json({
+    token,
     orgAdmin: { id: contact.contact_id, fullName: contact.full_name, email: contact.email, orgId: contact.org_id },
   })
 }))
@@ -384,7 +388,9 @@ organisationsRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   )
 
   if (result.rowCount === 0) {
-    res.clearCookie(config.cookieName, { path: '/' })
+    // See the matching comment in routes/auth.js's GET /me — clearCookie
+    // needs the same attributes the cookie was set with, domain included.
+    res.clearCookie(config.cookieName, config.sessionCookieOptions)
     return res.status(404).json({ message: 'Admin account not found.' })
   }
 

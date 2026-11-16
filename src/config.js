@@ -28,6 +28,30 @@ const isProduction = nodeEnv === 'production'
 // go back to the tighter Lax setting even in production.
 const sameSite = process.env.COOKIE_SAMESITE || (isProduction ? 'none' : 'lax')
 
+// SameSite=None still isn't enough on its own: it's only the *required*
+// attribute for a cross-site cookie to be sendable at all — several
+// browsers (Safari ITP, Firefox ETP strict mode, Brave, and Chrome's
+// ongoing third-party-cookie phase-out, which is now on by default for a
+// growing share of Chrome users) block or partition third-party cookies
+// regardless of SameSite. That's exactly what produced the "logs in, says
+// Redirecting…, then bounces back to a blank login form" report: the POST
+// /auth/login response's Set-Cookie gets silently dropped by the browser,
+// so the very next GET /auth/me has no cookie to send and comes back
+// unauthenticated.
+//
+// The real fix is making the cookie first-party by putting the API on a
+// subdomain of the SAME registrable domain as the frontend (e.g.
+// api.uvaa.pro alongside test.uvaa.pro) and setting COOKIE_DOMAIN to the
+// shared parent, e.g. ".uvaa.pro" — a leading dot makes the cookie valid
+// for that domain and every subdomain of it, so it travels with requests
+// to api.uvaa.pro from a page served at test.uvaa.pro (or any future
+// uvaa.pro subdomain) as an ordinary first-party cookie, unaffected by any
+// of the third-party-cookie blocking above. Leave COOKIE_DOMAIN unset
+// (the default) until that subdomain exists — setting a Domain the browser
+// doesn't recognise as covering the API's actual host makes the browser
+// reject the cookie outright, which is worse than the current behaviour.
+const cookieDomain = process.env.COOKIE_DOMAIN || undefined
+
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   nodeEnv,
@@ -47,6 +71,7 @@ export const config = {
     secure: sameSite === 'none' ? true : isProduction, // SameSite=None requires Secure
     sameSite,
     path: '/',
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
   },
 
   appVerifyUrlBase: required('APP_VERIFY_URL_BASE', 'http://localhost:5173/verify'),

@@ -461,12 +461,17 @@ authRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   )
 
   const token = signSession({ sub: account.respondent_id, email: account.email }, { rememberMe })
+  // Cookie is kept as a fallback for any browser that still accepts it, but
+  // the frontend now relies on the `token` in the body below, sent back as
+  // an Authorization header on every later request — see the comment in
+  // middleware/requireAuth.js for why.
   res.cookie(config.cookieName, token, {
     ...config.sessionCookieOptions,
     maxAge: (rememberMe ? 30 : 0.5) * 24 * 60 * 60 * 1000, // 30 days vs 12 hours
   })
 
   return res.status(200).json({
+    token,
     respondent: {
       id: account.respondent_id,
       fullName: account.full_name,
@@ -507,7 +512,11 @@ authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   )
 
   if (result.rowCount === 0) {
-    res.clearCookie(config.cookieName, { path: '/' })
+    // clearCookie must be called with the same attributes the cookie was
+    // set with (minus maxAge) or the browser won't recognise it as the
+    // same cookie to remove — in particular, once COOKIE_DOMAIN is set,
+    // clearing with just { path: '/' } silently fails to clear it.
+    res.clearCookie(config.cookieName, config.sessionCookieOptions)
     return res.status(404).json({ message: 'Account not found.' })
   }
 
