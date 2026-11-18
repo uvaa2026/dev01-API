@@ -21,6 +21,7 @@ import {
   GUNA_DOMINANCE_PROFILE,
   DQI_BAND_CALLOUT,
   buildDevelopmentFocus,
+  buildDevelopingExtraLine,
   getGunaContent,
   getConstructContent,
 } from '../lib/scoring.js'
@@ -426,6 +427,21 @@ assessmentRouter.get('/report', asyncHandler(async (req, res) => {
     }))
     .sort((a, b) => b.pct - a.pct)
 
+  // Section 2.2 margin narrative, re-cast as "level" per the 18 Nov 2026
+  // report-spec edit — margin 0 (two or three gunas tied on counts) is now
+  // provisional *for this participant report specifically*: the dominance
+  // block prints once per level guna instead of once for "the" dominant
+  // one, headed with their combined names, and Section 4 omits the pattern
+  // name. This is computed fresh from the counts here and does NOT touch
+  // the DB-persisted `provisional` column (kept exactly as it was,
+  // threshold-based, for admin/facilitator views in admin.js/orgAdmin.js).
+  const marginNote = buildOrientationMarginNote({ sattvaPct, rajasPct, tamasPct, sattvaCount, rajasCount, tamasCount })
+  const levelGunas = marginNote.level ? marginNote.levelGunas : [row.dominance]
+  const dqiCallout = { ...DQI_BAND_CALLOUT[row.dqi_band] }
+  if (row.dqi_band === 'DEVELOPING') {
+    dqiCallout.extraLine = buildDevelopingExtraLine(dimensionPct)
+  }
+
   const response = {
     ready: true,
     // "Held pattern" rendering rule: Reserved but steady (Tamas + Anchored)
@@ -439,14 +455,21 @@ assessmentRouter.get('/report', asyncHandler(async (req, res) => {
       sattvaPct,
       rajasPct,
       tamasPct,
+      // profile/profiles both ship: `profile` for any old consumer, and the
+      // `profiles` array (always present, length 1 unless level) that
+      // Report.jsx actually renders from, so it doesn't need a separate
+      // code path for the single-dominant vs. level cases.
       profile: GUNA_DOMINANCE_PROFILE[row.dominance],
-      marginNote: buildOrientationMarginNote({ sattvaPct, rajasPct, tamasPct, sattvaCount, rajasCount, tamasCount }),
+      profiles: levelGunas.map((g) => ({ guna: g, ...GUNA_DOMINANCE_PROFILE[g] })),
+      level: marginNote.level,
+      levelHeading: marginNote.levelHeading,
+      marginNote: marginNote.noteText,
     },
     dqi: {
       raw: row.dqi_raw,
       pct: Number(row.dqi_pct),
       band: row.dqi_band,
-      callout: DQI_BAND_CALLOUT[row.dqi_band],
+      callout: dqiCallout,
     },
     capacities,
   }
@@ -462,6 +485,7 @@ assessmentRouter.get('/report', asyncHandler(async (req, res) => {
     whatHolds: pattern.whatHolds,
     developmentFocus: pattern.developmentFocus,
     patternBand: pattern.patternBand,
+    stepDownLine: pattern.stepDownLine,
   }
   response.developmentFocus = buildDevelopmentFocus(dimensionPct)
 

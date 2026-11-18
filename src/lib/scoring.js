@@ -119,16 +119,52 @@ export function classifyGunaMargin(margin) {
   return 'SPREAD'
 }
 
-// Section 2.2 dominance-margin narrative. Returns null for CLEAR (the
-// dominance block prints alone, nothing else) — a string otherwise,
-// percentages and names substituted from the actual result.
-export function buildOrientationMarginNote({ sattvaPct, rajasPct, tamasPct, sattvaCount, rajasCount, tamasCount }) {
-  const pctByGuna = { SATTVA: sattvaPct, RAJAS: rajasPct, TAMAS: tamasPct }
+// Grammar helper for joining 1-3 names ("A", "A and B", "A, B and C") — used
+// for both the level-guna heading (section 2.2) and the step-down names list
+// (section 4.1).
+function joinNames(names) {
+  if (names.length <= 1) return names.join('')
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+// Section 2.2 margin sub-classification (report spec, edited 18 Nov 2026 —
+// adds two bands between the old CLEAR/NARROW/SPREAD split: margin 1 ("two
+// close", not level) and margin 0, which is now always "level" and is split
+// into TWO_LEVEL (top two tied, third behind) and ALL_LEVEL (all three
+// tied). This is computed fresh from the counts every time, same as before
+// — never from the displayed/rounded percentages — and is deliberately kept
+// separate from the DB-persisted `provisional` column (threshold-based,
+// facilitator/admin-only, unchanged elsewhere in the app): this is a
+// report-rendering concept only.
+export function classifyGunaOrientation({ sattvaCount, rajasCount, tamasCount }) {
   const countByGuna = { SATTVA: sattvaCount, RAJAS: rajasCount, TAMAS: tamasCount }
   const ranked = GUNA_ORDER.map((guna) => ({ guna, count: countByGuna[guna] })).sort((a, b) => b.count - a.count)
   const margin = ranked[0].count - ranked[1].count
-  const band = classifyGunaMargin(margin)
-  if (band === 'CLEAR') return null
+
+  let band
+  if (margin >= MARGIN_CLEAR) band = 'CLEAR'
+  else if (margin >= MARGIN_NARROW) band = 'NARROW'
+  else if (margin === 1) band = 'TWO_CLOSE'
+  else band = ranked[0].count === ranked[2].count ? 'ALL_LEVEL' : 'TWO_LEVEL'
+
+  return { band, margin, ranked, level: band === 'TWO_LEVEL' || band === 'ALL_LEVEL' }
+}
+
+// Section 2.2 dominance-margin narrative. Returns { noteText, level,
+// levelGunas, levelHeading }. noteText is null for CLEAR (the dominance
+// block prints alone, nothing else). levelGunas/levelHeading are only
+// populated when level is true — the gunas (in fixed Sattva/Rajas/Tamas
+// order) whose dominance block should print, headed with their combined
+// names ("Composure and Drive, level") instead of "{Name} dominant", per
+// the report spec's "Added." note under the 2.2 margin table.
+export function buildOrientationMarginNote({ sattvaPct, rajasPct, tamasPct, sattvaCount, rajasCount, tamasCount }) {
+  const pctByGuna = { SATTVA: sattvaPct, RAJAS: rajasPct, TAMAS: tamasPct }
+  const { band, ranked, level } = classifyGunaOrientation({ sattvaCount, rajasCount, tamasCount })
+
+  if (band === 'CLEAR') {
+    return { noteText: null, level: false, levelGunas: [], levelHeading: null }
+  }
 
   const top = ranked[0].guna
   const topName = GUNA_DOMINANCE_PROFILE[top].name
@@ -136,17 +172,46 @@ export function buildOrientationMarginNote({ sattvaPct, rajasPct, tamasPct, satt
   if (band === 'NARROW') {
     const second = ranked[1].guna
     const secondName = GUNA_DOMINANCE_PROFILE[second].name
-    return `${topName} is your strongest orientation at ${pctByGuna[top]} percent, though less pronounced than in many profiles. ${secondName} at ${pctByGuna[second]} percent is close enough that you will recognise parts of both.`
+    return {
+      noteText: `${topName} is your strongest orientation at ${pctByGuna[top]} percent, though less pronounced than in many profiles. ${secondName} at ${pctByGuna[second]} percent is close enough that you will recognise parts of both.`,
+      level: false,
+      levelGunas: [],
+      levelHeading: null,
+    }
   }
 
-  // SPREAD: name the other two in fixed Sattva/Rajas/Tamas order, matching
-  // the report spec's own example ("...ahead at 33 percent, with drive at
-  // 33 and reserve at 33").
-  const others = GUNA_ORDER.filter((g) => g !== top)
-  const othersText = others
-    .map((g) => `${GUNA_DOMINANCE_PROFILE[g].name.toLowerCase()} at ${pctByGuna[g]}`)
-    .join(' and ')
-  return `Your responses spread fairly evenly. ${topName} came out marginally ahead at ${pctByGuna[top]} percent, with ${othersText} percent. What you work from is shaped more by the situation than by disposition, and the sections that follow will tell you more than this one.`
+  if (band === 'TWO_CLOSE') {
+    const second = ranked[1].guna
+    const secondName = GUNA_DOMINANCE_PROFILE[second].name
+    return {
+      noteText: `${topName} and ${secondName} sit close together, at ${pctByGuna[top]} and ${pctByGuna[second]} percent. ${topName} came out one situation ahead, so the block below describes ${topName}, and you will probably recognise parts of ${secondName} as well.`,
+      level: false,
+      levelGunas: [],
+      levelHeading: null,
+    }
+  }
+
+  if (band === 'TWO_LEVEL') {
+    // The two tied gunas, named in fixed Sattva/Rajas/Tamas order rather
+    // than count-rank order, so the heading reads naturally regardless of
+    // which pair tied.
+    const levelGunas = GUNA_ORDER.filter((g) => ranked.slice(0, 2).some((r) => r.guna === g))
+    const [a, b] = levelGunas.map((g) => GUNA_DOMINANCE_PROFILE[g].name)
+    return {
+      noteText: `${a} and ${b} came out level at ${pctByGuna[top]} percent. Neither is shown as the stronger, so both are described below, and this report does not name a pattern. The sections that follow tell you more than this one.`,
+      level: true,
+      levelGunas,
+      levelHeading: `${joinNames([a, b])}, level`,
+    }
+  }
+
+  // ALL_LEVEL
+  return {
+    noteText: `Your responses were spread evenly across all three orientations, at ${sattvaPct}, ${rajasPct} and ${tamasPct} percent. What you work from appears to depend more on the situation than on a settled disposition, and the sections that follow will tell you more than this one.`,
+    level: true,
+    levelGunas: [...GUNA_ORDER],
+    levelHeading: `${joinNames(GUNA_ORDER.map((g) => GUNA_DOMINANCE_PROFILE[g].name))}, level`,
+  }
 }
 
 // Section 2.2 per-dominance description blocks (report spec, verbatim).
@@ -304,6 +369,25 @@ export function computeConstruct(answers, leadershipScope) {
   else dqiBand = 'DEVELOPING'
 
   return { dimensionRaw: raw, dimensionPct, deficient, dqiRaw, dqiPct, dqiBand }
+}
+
+// Display names for the three bands — used in the step-down line (4.1) and
+// nowhere the band code itself (ANCHORED/DEVELOPING/AT_RISK) would do.
+export const BAND_TITLE = { ANCHORED: 'Anchored', DEVELOPING: 'Developing', AT_RISK: 'At risk' }
+
+// Section 3.2, "Resolved" note on the Developing callout (18 Nov 2026 edit):
+// the Developing band spans 40-74, wide enough that a 42 and a 73 get the
+// same fixed text. This generates one extra line naming the two strongest
+// capacities and the lowest, so two very different Developing profiles read
+// differently without splitting the band. Only meaningful for DEVELOPING —
+// callers should only append it for that band.
+export function buildDevelopingExtraLine(dimensionPct) {
+  const sorted = DIMENSIONS
+    .map((dim) => ({ dim, name: CAPACITY_NAME[dim], pct: dimensionPct[dim] }))
+    .sort((a, b) => b.pct - a.pct)
+  const [top1, top2] = sorted
+  const lowest = sorted[sorted.length - 1]
+  return `${top1.name} and ${top2.name} are your strongest capacities here. ${lowest.name} is where this is most likely to show up first.`
 }
 
 // Section 3.2 DQI band callout (report spec, verbatim).
@@ -509,14 +593,19 @@ const UVAA_PATTERN_TABLE = {
  * }}
  */
 export function computePattern(guna, construct) {
-  const belowFloorCount = DIMENSIONS.reduce(
-    (n, dim) => n + (construct.dimensionPct[dim] < PATTERN_FLOOR_PCT ? 1 : 0),
-    0,
-  )
+  const belowFloorNames = DIMENSIONS.filter((dim) => construct.dimensionPct[dim] < PATTERN_FLOOR_PCT)
+    .map((dim) => CAPACITY_NAME[dim])
+  const belowFloorCount = belowFloorNames.length
 
   const dqiBandIndex = BAND_ORDER.indexOf(construct.dqiBand)
   const steppedDown = belowFloorCount >= PATTERN_STEPDOWN_COUNT && dqiBandIndex < BAND_ORDER.length - 1
   const patternBand = BAND_ORDER[steppedDown ? dqiBandIndex + 1 : dqiBandIndex]
+
+  // Section 4.1 "Added. Step-down line" (18 Nov 2026 edit) — prints only
+  // where pattern_band differs from dqi_band, i.e. only when steppedDown.
+  const stepDownLine = steppedDown
+    ? `Your overall score places you in the ${BAND_TITLE[construct.dqiBand]} band. Your pattern uses the ${BAND_TITLE[patternBand]} band, because ${belowFloorCount} of your four capacities sit below 50, and a good overall score can hide that. ${joinNames(belowFloorNames)} ${belowFloorCount === 1 ? 'is the one' : 'are the ones'} to look at.`
+    : null
 
   // Partial profile: Construct is done but Guna isn't (shouldn't normally
   // happen given Construct is gated behind Guna submission, but the scoring
@@ -531,6 +620,7 @@ export function computePattern(guna, construct) {
       developmentFocus: null,
       patternBand,
       steppedDown,
+      stepDownLine,
       provisional: false,
       partial: true,
       heldPattern: false,
@@ -547,8 +637,14 @@ export function computePattern(guna, construct) {
     developmentFocus: cell.developmentFocus,
     patternBand,
     steppedDown,
-    // dominance_provisional per the report spec's data table: facilitator
-    // view only, does not affect the participant report's own rendering.
+    stepDownLine,
+    // dominance_provisional per the report spec's data table: this is the
+    // DB-persisted, threshold-based flag — facilitator/admin view only,
+    // left exactly as it was everywhere else in the app (admin.js,
+    // orgAdmin.js). It is distinct from orientation "level" (margin === 0,
+    // recomputed fresh from counts in routes/assessment.js via
+    // classifyGunaOrientation), which is the one that now affects the
+    // participant report per the 18 Nov 2026 spec edit — see Report.jsx.
     provisional: guna.provisional,
     partial: false,
     // "Held pattern" (report spec rendering rules): Reserved but steady
