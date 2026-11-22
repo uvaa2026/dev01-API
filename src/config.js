@@ -77,6 +77,23 @@ export const config = {
   appVerifyUrlBase: required('APP_VERIFY_URL_BASE', 'http://localhost:5173/verify'),
   appResetPasswordUrlBase: required('APP_RESET_PASSWORD_URL_BASE', 'http://localhost:5173/reset-password'),
 
+  // Super Admin console (routes/admin.js) — is_admin alone used to be
+  // enough to reach every admin route; now that the same area can disable
+  // accounts, approve/reject registrations across any organisation, and
+  // bump an org's purchased seat count, requireAdmin.js also requires the
+  // signed-in account's email to be on this allowlist (checked against the
+  // email already carried in the session token — see lib/tokens.js — so
+  // this costs no extra DB round trip). Comma-separated, case-insensitive,
+  // whitespace-trimmed. Deliberately fails CLOSED: an empty/unset list
+  // denies every admin request rather than falling back to "is_admin is
+  // enough", so a missed deploy config can't silently reopen this. Set it
+  // in Azure App Service → Configuration (uvaa-dev-api), e.g.
+  // SUPER_ADMIN_EMAILS=sayee@dheemerconsulting.com,you@hotmail.com
+  superAdminEmails: (process.env.SUPER_ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: Number(process.env.SMTP_PORT ?? 587),

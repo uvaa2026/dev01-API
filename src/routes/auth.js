@@ -410,7 +410,7 @@ authRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   const { email, password, rememberMe } = parsed.data
 
   const result = await pool.query(
-    `SELECT r.respondent_id, r.full_name, r.email, r.is_admin, r.approval_status,
+    `SELECT r.respondent_id, r.full_name, r.email, r.is_admin, r.approval_status, r.disabled_at,
             uc.password_hash, uc.is_email_verified, uc.failed_login_attempts, uc.locked_until
      FROM respondents r
      JOIN user_credentials uc ON uc.respondent_id = r.respondent_id
@@ -453,6 +453,15 @@ authRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   }
   if (account.approval_status === 'REJECTED') {
     return res.status(403).json({ message: 'Your registration was not approved. Contact your organisation admin for details.' })
+  }
+
+  // Super Admin console: disabled takes precedence over (and is checked
+  // independently of) approval_status — a Super Admin can disable an
+  // already-APPROVED account at any time, not just reject it at
+  // registration. Password attempt counters above are still updated as
+  // usual before this point, same as any other rejected login.
+  if (account.disabled_at) {
+    return res.status(403).json({ message: 'This account has been disabled. Contact your organisation or UVAA support.' })
   }
 
   await pool.query(

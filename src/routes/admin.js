@@ -24,7 +24,8 @@ adminRouter.use(requireAuth, requireAdmin)
 adminRouter.get('/users', asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.leadership_scope,
-            r.experience_range, r.created_at, o.name AS organisation_name,
+            r.experience_range, r.created_at, r.organisation_id, o.name AS organisation_name,
+            r.approval_status, r.disabled_at, r.disabled_reason,
             uc.is_email_verified, uc.last_login_at,
             gr.submitted_at AS guna_submitted_at,
             cr.submitted_at AS construct_submitted_at,
@@ -43,6 +44,7 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
     id: row.respondent_id,
     fullName: row.full_name,
     email: row.email,
+    organisationId: row.organisation_id,
     organisationName: row.organisation_name,
     vertical: row.industry_vertical,
     leadershipScope: row.leadership_scope,
@@ -50,6 +52,9 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
     isEmailVerified: row.is_email_verified,
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
+    approvalStatus: row.approval_status,
+    disabledAt: row.disabled_at,
+    disabledReason: row.disabled_reason,
     assessments: {
       guna: { submitted: Boolean(row.guna_submitted_at), submittedAt: row.guna_submitted_at },
       construct: { submitted: Boolean(row.construct_submitted_at), submittedAt: row.construct_submitted_at },
@@ -72,7 +77,8 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
 
   const result = await pool.query(
     `SELECT r.respondent_id, r.full_name, r.email, r.industry_vertical, r.leadership_scope,
-            r.experience_range, r.department, r.created_at, o.name AS organisation_name,
+            r.experience_range, r.department, r.created_at, r.organisation_id, o.name AS organisation_name,
+            r.approval_status, r.disabled_at, r.disabled_reason,
             uc.is_email_verified, uc.last_login_at,
             gr.submitted_at AS guna_submitted_at,
             cr.submitted_at AS construct_submitted_at,
@@ -96,6 +102,7 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
       id: row.respondent_id,
       fullName: row.full_name,
       email: row.email,
+      organisationId: row.organisation_id,
       organisationName: row.organisation_name,
       vertical: row.industry_vertical,
       leadershipScope: row.leadership_scope,
@@ -104,6 +111,9 @@ adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
       isEmailVerified: row.is_email_verified,
       lastLoginAt: row.last_login_at,
       createdAt: row.created_at,
+      approvalStatus: row.approval_status,
+      disabledAt: row.disabled_at,
+      disabledReason: row.disabled_reason,
     },
     assessments: {
       guna: { submitted: Boolean(row.guna_submitted_at), submittedAt: row.guna_submitted_at },
@@ -337,6 +347,213 @@ adminRouter.get('/users/:id/report', asyncHandler(async (req, res) => {
       steppedDown: pattern.steppedDown,
     },
     needsFacilitatorReview: pattern.heldPattern,
+  })
+}))
+
+// ---------------------------------------------------------------------------
+// PATCH /admin/users/:id/approval — approve or reject ANY respondent's
+// registration, across any organisation (org admins get the same decision
+// via PATCH /org-admin/participants/:id/approve, but scoped to their own
+// org only — see requireOrgAdmin.js). Same APPROVE/REJECT contract as that
+// endpoint, no org-scoping on the WHERE clause.
+// ---------------------------------------------------------------------------
+adminRouter.patch('/users/:id/approval', asyncHandler(async (req, res) => {
+  if (req.params.id === req.user.sub) {
+    return res.status(403).json({ message: 'Admins do not manage their own account from here.' })
+  }
+  const decision = req.body?.decision
+  if (decision !== 'APPROVE' && decision !== 'REJECT') {
+    return res.status(400).json({ message: 'decision must be "APPROVE" or "REJECT".' })
+  }
+  const newStatus = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
+
+  const result = await pool.query(
+    `UPDATE respondents SET approval_status = $1 WHERE respondent_id = $2
+     RETURNING respondent_id, approval_status`,
+    [newStatus, req.params.id],
+  )
+  if (result.rowCount === 0) {
+    return res.status(404).json({ message: 'Respondent not found.' })
+  }
+
+  return res.status(200).json({ id: result.rows[0].respondent_id, approvalStatus: result.rows[0].approval_status })
+}))
+
+// ---------------------------------------------------------------------------
+// PATCH /admin/users/:id/status — disable or re-enable a respondent's
+// account. Distinct from approval_status above: approval only ever applies
+// once, at registration (PENDING -> APPROVED/REJECTED), and was never
+// meant to revoke access from an account that's already active. Disabling
+// blocks the next login attempt immediately (routes/auth.js) AND ends any
+// already-active session on the very next request it makes
+// (middleware/requireAuth.js), rather than waiting for that session's
+// token to expire.
+// ---------------------------------------------------------------------------
+adminRouter.patch('/users/:id/status', asyncHandler(async (req, res) => {
+  if (req.params.id === req.user.sub) {
+    return res.status(403).json({ message: 'Admins do not manage their own account from here.' })
+  }
+  const { disabled, reason } = req.body || {}
+  if (typeof disabled !== 'boolean') {
+    return res.status(400).json({ message: 'disabled must be true or false.' })
+  }
+
+  const result = await pool.query(
+    `UPDATE respondents
+     SET disabled_at = CASE WHEN $1 THEN now() ELSE NULL END,
+         disabled_reason = CASE WHEN $1 THEN $2 ELSE NULL END
+     WHERE respondent_id = $3
+     RETURNING respondent_id, disabled_at, disabled_reason`,
+    [disabled, reason || null, req.params.id],
+  )
+  if (result.rowCount === 0) {
+    return res.status(404).json({ message: 'Respondent not found.' })
+  }
+
+  const row = result.rows[0]
+  return res.status(200).json({ id: row.respondent_id, disabledAt: row.disabled_at, disabledReason: row.disabled_reason })
+}))
+
+// ---------------------------------------------------------------------------
+// GET /admin/organisations — every organisation, with its seat usage,
+// cohort code/status, and a live respondent count — the "see the org and
+// list of accounts under it" entry point (drill in via
+// GET /admin/organisations/:id below).
+// ---------------------------------------------------------------------------
+adminRouter.get('/organisations', asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    `SELECT o.org_id, o.name, o.industry_vertical, o.subscription_plan,
+            o.email_domain, o.seat_count, o.seats_used, o.approval_mode,
+            o.provisioning_model, o.cohort_code, o.cohort_deadline_at, o.org_status,
+            o.created_at,
+            (SELECT count(*) FROM respondents r WHERE r.organisation_id = o.org_id) AS respondent_count
+     FROM organisations o
+     ORDER BY o.created_at DESC`,
+  )
+
+  const organisations = result.rows.map((row) => ({
+    id: row.org_id,
+    name: row.name,
+    vertical: row.industry_vertical,
+    subscriptionPlan: row.subscription_plan,
+    emailDomain: row.email_domain,
+    seatCount: row.seat_count,
+    seatsUsed: row.seats_used,
+    approvalMode: row.approval_mode,
+    provisioningModel: row.provisioning_model,
+    cohortCode: row.cohort_code,
+    cohortDeadlineAt: row.cohort_deadline_at,
+    orgStatus: row.org_status,
+    createdAt: row.created_at,
+    respondentCount: Number(row.respondent_count),
+  }))
+
+  return res.status(200).json({ organisations })
+}))
+
+// ---------------------------------------------------------------------------
+// GET /admin/organisations/:id — one organisation's full detail plus the
+// list of every respondent under it (same per-respondent shape as
+// GET /admin/users, so the frontend can reuse one row component and link
+// straight into GET /admin/users/:id for any of them).
+// ---------------------------------------------------------------------------
+adminRouter.get('/organisations/:id', asyncHandler(async (req, res) => {
+  const orgResult = await pool.query(
+    `SELECT org_id, name, industry_vertical, subscription_plan, email_domain,
+            seat_count, seats_used, approval_mode, provisioning_model,
+            cohort_code, cohort_deadline_at, org_status, created_at
+     FROM organisations WHERE org_id = $1`,
+    [req.params.id],
+  )
+  if (orgResult.rowCount === 0) {
+    return res.status(404).json({ message: 'Organisation not found.' })
+  }
+  const org = orgResult.rows[0]
+
+  const usersResult = await pool.query(
+    `SELECT r.respondent_id, r.full_name, r.email, r.created_at,
+            r.approval_status, r.disabled_at, r.disabled_reason,
+            uc.is_email_verified, uc.last_login_at,
+            gr.submitted_at AS guna_submitted_at,
+            cr.submitted_at AS construct_submitted_at,
+            (gr.scored_at IS NOT NULL AND cr.scored_at IS NOT NULL) AS report_ready
+     FROM respondents r
+     JOIN user_credentials uc ON uc.respondent_id = r.respondent_id
+     LEFT JOIN guna_responses gr ON gr.respondent_id = r.respondent_id
+     LEFT JOIN construct_responses cr ON cr.respondent_id = r.respondent_id
+     WHERE r.organisation_id = $1
+     ORDER BY r.created_at DESC`,
+    [req.params.id],
+  )
+
+  return res.status(200).json({
+    organisation: {
+      id: org.org_id,
+      name: org.name,
+      vertical: org.industry_vertical,
+      subscriptionPlan: org.subscription_plan,
+      emailDomain: org.email_domain,
+      seatCount: org.seat_count,
+      seatsUsed: org.seats_used,
+      approvalMode: org.approval_mode,
+      provisioningModel: org.provisioning_model,
+      cohortCode: org.cohort_code,
+      cohortDeadlineAt: org.cohort_deadline_at,
+      orgStatus: org.org_status,
+      createdAt: org.created_at,
+    },
+    users: usersResult.rows.map((row) => ({
+      id: row.respondent_id,
+      fullName: row.full_name,
+      email: row.email,
+      createdAt: row.created_at,
+      approvalStatus: row.approval_status,
+      disabledAt: row.disabled_at,
+      disabledReason: row.disabled_reason,
+      isEmailVerified: row.is_email_verified,
+      lastLoginAt: row.last_login_at,
+      assessments: {
+        guna: { submitted: Boolean(row.guna_submitted_at), submittedAt: row.guna_submitted_at },
+        construct: { submitted: Boolean(row.construct_submitted_at), submittedAt: row.construct_submitted_at },
+      },
+      reportReady: row.report_ready,
+    })),
+  })
+}))
+
+// ---------------------------------------------------------------------------
+// PATCH /admin/organisations/:id/seats — raise (or correct) the seat count
+// purchased against an organisation's cohort code. Never lets seat_count
+// drop below seats_used already consumed — that would leave the org
+// over-subscribed against what it can show for, which is exactly the kind
+// of silent inconsistency a direct DB edit could introduce; the API makes
+// it an explicit 400 instead.
+// ---------------------------------------------------------------------------
+adminRouter.patch('/organisations/:id/seats', asyncHandler(async (req, res) => {
+  const seatCount = Number(req.body?.seatCount)
+  if (!Number.isInteger(seatCount) || seatCount < 1) {
+    return res.status(400).json({ message: 'seatCount must be a whole number of at least 1.' })
+  }
+
+  const current = await pool.query('SELECT seats_used FROM organisations WHERE org_id = $1', [req.params.id])
+  if (current.rowCount === 0) {
+    return res.status(404).json({ message: 'Organisation not found.' })
+  }
+  if (seatCount < current.rows[0].seats_used) {
+    return res.status(400).json({
+      message: `seatCount can't be lower than the ${current.rows[0].seats_used} seats already used.`,
+    })
+  }
+
+  const result = await pool.query(
+    'UPDATE organisations SET seat_count = $1, updated_at = now() WHERE org_id = $2 RETURNING org_id, seat_count, seats_used',
+    [seatCount, req.params.id],
+  )
+
+  return res.status(200).json({
+    id: result.rows[0].org_id,
+    seatCount: result.rows[0].seat_count,
+    seatsUsed: result.rows[0].seats_used,
   })
 }))
 
