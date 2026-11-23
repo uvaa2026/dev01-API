@@ -348,6 +348,14 @@ authRouter.post('/forgot-password', forgotPasswordLimiter, asyncHandler(async (r
 // POST /auth/reset-password — consumes a password reset token from the
 // email link and sets a new password. Mirrors /verify's token-validity
 // check (hash lookup, not consumed, not expired).
+//
+// Shared by BOTH identity spaces since migration 027: a token row's
+// respondent_id/contact_id tells this route which credentials table to
+// update (exactly one is ever set — see that migration's CHECK
+// constraint), so this one endpoint serves a respondent's own
+// /forgot-password request and an Org Admin's /org/forgot-password one
+// (routes/organisations.js) alike. The frontend's ResetPassword.jsx never
+// needs to know which kind of account a given link belongs to.
 // ---------------------------------------------------------------------------
 authRouter.post('/reset-password', asyncHandler(async (req, res) => {
   const parsed = resetPasswordSchema.safeParse(req.body)
@@ -360,7 +368,7 @@ authRouter.post('/reset-password', asyncHandler(async (req, res) => {
 
   const tokenHash = hashToken(parsed.data.token)
   const tokenResult = await pool.query(
-    `SELECT token_id, respondent_id FROM password_reset_tokens
+    `SELECT token_id, respondent_id, contact_id FROM password_reset_tokens
      WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()`,
     [tokenHash],
   )
@@ -371,29 +379,44 @@ authRouter.post('/reset-password', asyncHandler(async (req, res) => {
     })
   }
 
-  const { token_id: tokenId, respondent_id: respondentId } = tokenResult.rows[0]
+  const { token_id: tokenId, respondent_id: respondentId, contact_id: contactId } = tokenResult.rows[0]
   const passwordHash = await hashPassword(parsed.data.password)
 
   await withTransaction(async (client) => {
     await client.query('UPDATE password_reset_tokens SET consumed_at = now() WHERE token_id = $1', [tokenId])
+
     // A successful reset is stronger proof of identity than the password
-    // itself, so there's no reason to leave a failed-login lockout in
-    // place afterward — clear it along with setting the new hash.
-    await client.query(
-      `UPDATE user_credentials
-       SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL
-       WHERE respondent_id = $2`,
-      [passwordHash, respondentId],
-    )
-    // Any other outstanding reset tokens for this respondent stop meaning
-    // anything once the password has actually changed — invalidate them so
-    // an older, still-unexpired link from an earlier request can't also be
+    // itself, so there's no reason to leave a failed-login lockout in place
+    // afterward — clear it along with setting the new hash. Any other
+    // outstanding reset tokens for this same identity stop meaning anything
+    // once the password has actually changed — invalidate them so an
+    // older, still-unexpired link from an earlier request can't also be
     // used.
-    await client.query(
-      `UPDATE password_reset_tokens SET consumed_at = now()
-       WHERE respondent_id = $1 AND consumed_at IS NULL`,
-      [respondentId],
-    )
+    if (respondentId) {
+      await client.query(
+        `UPDATE user_credentials
+         SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL
+         WHERE respondent_id = $2`,
+        [passwordHash, respondentId],
+      )
+      await client.query(
+        `UPDATE password_reset_tokens SET consumed_at = now()
+         WHERE respondent_id = $1 AND consumed_at IS NULL`,
+        [respondentId],
+      )
+    } else {
+      await client.query(
+        `UPDATE organisation_contact_credentials
+         SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL
+         WHERE contact_id = $2`,
+        [passwordHash, contactId],
+      )
+      await client.query(
+        `UPDATE password_reset_tokens SET consumed_at = now()
+         WHERE contact_id = $1 AND consumed_at IS NULL`,
+        [contactId],
+      )
+    }
   })
 
   return res.status(200).json({ message: 'Your password has been reset. You can now log in.' })

@@ -4,8 +4,8 @@ import { config } from '../config.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { generateVerificationToken, hashToken, signSession } from '../lib/tokens.js'
 import { generateCohortCode, normalizeCohortCode } from '../lib/cohortCode.js'
-import { sendVerificationEmail, sendCohortCodeEmail } from '../lib/email.js'
-import { orgRegisterSchema, verifySchema, loginSchema, formatZodError } from '../lib/validation.js'
+import { sendVerificationEmail, sendCohortCodeEmail, sendPasswordResetEmail } from '../lib/email.js'
+import { orgRegisterSchema, verifySchema, loginSchema, forgotPasswordSchema, formatZodError } from '../lib/validation.js'
 import { requireAuth } from '../middleware/requireAuth.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
@@ -17,6 +17,7 @@ const UNIQUE_VIOLATION = '23505'
 const MAX_CODE_ATTEMPTS = 10
 const MAX_FAILED_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
+const RESET_TOKEN_MINUTES = 60 // matches routes/auth.js's own RESET_TOKEN_MINUTES
 
 // Cohort codes are 4 random + DDMMYY + 2 random chars (cohortCode.js) — not
 // secret exactly, but not meant to be guessable at scale either. Without a
@@ -32,6 +33,14 @@ const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: 'Too many login attempts from this address. Please wait a while and try again.',
+})
+// Mirrors routes/auth.js's forgotPasswordLimiter — same reasoning (this
+// route has no account-lockout concept of its own, so without a per-IP cap
+// it could be used to mail-bomb a target's inbox or burn SMTP quota).
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many requests from this address. Please wait a while and try again.',
 })
 
 // ---------------------------------------------------------------------------
@@ -287,6 +296,57 @@ organisationsRouter.get('/lookup', lookupLimiter, asyncHandler(async (req, res) 
     requiresDomainMatch: Boolean(org.email_domain),
     hasRoster: org.provisioning_model === 'NAMED_ROSTER',
   })
+}))
+
+// ---------------------------------------------------------------------------
+// POST /org/forgot-password — requests a password reset link for an Org
+// Admin account. Mirrors routes/auth.js's /auth/forgot-password exactly,
+// including the generic response regardless of whether the email matches
+// an account (same reasoning: this can't be allowed to double as a way to
+// discover which email addresses have an Org Admin account at all). Only
+// matches role = 'ORG_ADMIN' contacts — a Facilitator contact (added at
+// org registration but with no login of their own yet) never gets a reset
+// link, same restriction POST /org/login's own lookup already applies.
+// Token redemption is shared with respondents — see the generalised
+// POST /auth/reset-password above, and migration 027.
+// ---------------------------------------------------------------------------
+organisationsRouter.post('/forgot-password', forgotPasswordLimiter, asyncHandler(async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Enter a valid email address.' })
+  }
+  const { email } = parsed.data
+
+  const genericResponse = () => res.status(200).json({
+    message: "If an account exists for that email address, we've sent a password reset link.",
+  })
+
+  const result = await pool.query(
+    `SELECT contact_id, full_name FROM organisation_contacts WHERE email = $1 AND role = 'ORG_ADMIN'`,
+    [email],
+  )
+  if (result.rowCount === 0) {
+    return genericResponse()
+  }
+  const { contact_id: contactId, full_name: fullName } = result.rows[0]
+
+  const { raw, hash } = generateVerificationToken()
+  await pool.query(
+    `INSERT INTO password_reset_tokens (contact_id, token_hash, expires_at)
+     VALUES ($1, $2, now() + interval '${RESET_TOKEN_MINUTES} minutes')`,
+    [contactId, hash],
+  )
+
+  const resetUrl = `${config.appResetPasswordUrlBase}?token=${raw}`
+  try {
+    await sendPasswordResetEmail({ to: email, fullName, resetUrl })
+  } catch (err) {
+    console.error('Failed to send password reset email for', email, err)
+    // Still return the generic response — don't let a send failure leak
+    // through as a different response shape than "email not found".
+  }
+
+  return genericResponse()
 }))
 
 // ---------------------------------------------------------------------------
