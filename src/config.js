@@ -60,7 +60,20 @@ export const config = {
   databaseUrl: required('DATABASE_URL'),
   dbSsl: (process.env.DB_SSL ?? 'true') === 'true',
 
-  frontendOrigin: required('FRONTEND_ORIGIN', 'http://localhost:5173'),
+  // Comma-separated list of frontend origins allowed to call this API with
+  // credentials (CORS). Exact match required, including scheme, no trailing
+  // slash — e.g. "https://test.uvaa.pro,https://my.uvaa.pro". There are now
+  // two real frontends (the test site and the production site) hitting the
+  // same API, both of which need to stay logged in, so this can't be a
+  // single value any more. FRONTEND_ORIGIN (singular) is kept as a fallback
+  // for compatibility with whatever's already set on Azure App Service — if
+  // FRONTEND_ORIGINS isn't set, we fall back to reading the old singular
+  // setting as a one-item list. Set FRONTEND_ORIGINS in Azure App Service →
+  // Configuration (uvaa-dev-api) to get both origins working at once.
+  frontendOrigins: (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
 
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '12h',

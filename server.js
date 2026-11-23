@@ -18,7 +18,22 @@ const app = express()
 // secure-cookie logic elsewhere, request logging).
 app.set('trust proxy', 1)
 
-app.use(cors({ origin: config.frontendOrigin, credentials: true }))
+// Dynamic origin check instead of a single static string — multiple real
+// frontends (test site + production site, possibly more later) now share
+// this one API, so we need to allow a short, explicit list of exact
+// origins rather than one hardcoded value. See config.frontendOrigins.
+app.use(cors({
+  origin(origin, callback) {
+    // No Origin header means it's not a browser cross-origin request at all
+    // (curl, server-to-server health checks, same-origin requests) — CORS
+    // only governs browser behavior, so there's nothing to restrict here.
+    if (!origin || config.frontendOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`))
+  },
+  credentials: true,
+}))
 app.use(express.json())
 app.use(cookieParser())
 
