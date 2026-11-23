@@ -7,6 +7,7 @@ import { asyncHandler } from '../lib/asyncHandler.js'
 import { GUNA_VIGNETTES } from '../data/gunaVignettes.js'
 import { getConstructScenarios } from '../data/constructScenarioVariants.js'
 import { computePattern, DIMENSION_RAW_COLUMN, CAPACITY_NAME, classifyCapacityBand, capacityLine } from '../lib/scoring.js'
+import { getCohortReport } from '../lib/cohortReport.js'
 
 export const adminRouter = Router()
 
@@ -522,6 +523,22 @@ adminRouter.get('/organisations/:id', asyncHandler(async (req, res) => {
 }))
 
 // ---------------------------------------------------------------------------
+// GET /admin/organisations/:id/cohort-report — same aggregate, anonymous
+// group-level report as GET /org-admin/cohort-report (lib/cohortReport.js),
+// for the facilitator/Super Admin side, any organisation. Unlike the
+// buyer-facing org-admin route, this one keeps `patternGrid` when the
+// cohort spec's 30-completed threshold is reached — "only the facilitator
+// does" (cohort spec decision 5).
+// ---------------------------------------------------------------------------
+adminRouter.get('/organisations/:id/cohort-report', asyncHandler(async (req, res) => {
+  const report = await getCohortReport(req.params.id)
+  if (!report) {
+    return res.status(404).json({ message: 'Organisation not found.' })
+  }
+  return res.status(200).json(report)
+}))
+
+// ---------------------------------------------------------------------------
 // PATCH /admin/organisations/:id/seats — raise (or correct) the seat count
 // purchased against an organisation's cohort code. Never lets seat_count
 // drop below seats_used already consumed — that would leave the org
@@ -706,7 +723,7 @@ adminRouter.get('/export', asyncHandler(async (req, res) => {
     'Full Name', 'Email', 'Organisation', 'Leadership Scope', 'Vertical', 'Experience (yrs)',
     'Registered', 'Last Login', 'Email Verified', 'Guna Submitted', 'Construct Submitted', 'Report Ready',
     'Guna Dominance', 'Guna Provisional', 'Sattva', 'Rajas', 'Tamas', 'TPE Raw', 'TPE Index',
-    'DQI Raw', 'DQI %', 'DQI Band', 'Upeksha %', 'Viveka %', 'Anuvigna %', 'Anasakti %',
+    'DQI Raw', 'DQI %', 'DQI Band', 'Upeksha %', 'Viveka %', 'Anudvigna %', 'Anasakti %',
     'UVAA Pattern', 'Pattern Band', 'Pattern Provisional', 'Needs Facilitator Review',
   ]
   ws1.addRow(headers1)

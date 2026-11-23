@@ -121,8 +121,10 @@ export function classifyGunaMargin(margin) {
 
 // Grammar helper for joining 1-3 names ("A", "A and B", "A, B and C") — used
 // for both the level-guna heading (section 2.2) and the step-down names list
-// (section 4.1).
-function joinNames(names) {
+// (section 4.1). Exported since lib/cohortReport.js (the cohort/org-level
+// report) reuses it for the same purpose (joining "most common orientation"
+// ties, blend lines).
+export function joinNames(names) {
   if (names.length <= 1) return names.join('')
   if (names.length === 2) return `${names[0]} and ${names[1]}`
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
@@ -334,6 +336,24 @@ const CAPACITY_BAND_MID_FLOOR = 50 // below this -> LOW band for capacity-line t
  *   dqiRaw: number, dqiPct: number, dqiBand: 'ANCHORED'|'DEVELOPING'|'AT_RISK',
  * }}
  */
+// construct_pct = ((construct_raw - 8) / 16) * 100 — the -8 corrects for the
+// item floor being 1, not 0 (Scoring Guide v5, 3.2). Exported so any caller
+// that already has a *_raw column value (e.g. lib/cohortReport.js, averaging
+// across many respondents) can get the same percentage without re-deriving
+// the formula.
+export function dimensionPctFromRaw(raw) {
+  return Math.round((((raw - 8) / 16) * 100) * 100) / 100
+}
+
+// Exported so callers that already have a DQI percentage in hand (e.g. a
+// cohort mean, rather than one respondent's raw answers) can classify it the
+// same way computeConstruct does below, without duplicating the thresholds.
+export function classifyDqiBand(pct) {
+  if (pct >= DQI_BAND_HIGH) return 'ANCHORED'
+  if (pct < DQI_BAND_LOW) return 'AT_RISK'
+  return 'DEVELOPING'
+}
+
 export function computeConstruct(answers, leadershipScope) {
   const scenarioById = CONSTRUCT_SCENARIO_BY_ID_BY_SCOPE[leadershipScope]
     || CONSTRUCT_SCENARIO_BY_ID_BY_SCOPE[DEFAULT_LEADERSHIP_SCOPE]
@@ -354,19 +374,13 @@ export function computeConstruct(answers, leadershipScope) {
   const dimensionPct = {}
   const deficient = {}
   for (const dim of DIMENSIONS) {
-    // construct_pct = ((construct_raw - 8) / 16) * 100 — the -8 corrects
-    // for the item floor being 1, not 0 (Scoring Guide v5, 3.2).
-    dimensionPct[dim] = Math.round((((raw[dim] - 8) / 16) * 100) * 100) / 100
+    dimensionPct[dim] = dimensionPctFromRaw(raw[dim])
     deficient[dim] = dimensionPct[dim] < DEFICIENCY_THRESHOLD_PCT
   }
 
   const dqiRaw = raw.UPEKSHA + raw.ANUVIGNA + raw.ANASAKTI + raw.VIVEKA
   const dqiPct = Math.round((((dqiRaw - 32) / 64) * 100) * 100) / 100
-
-  let dqiBand
-  if (dqiPct >= DQI_BAND_HIGH) dqiBand = 'ANCHORED'
-  else if (dqiPct < DQI_BAND_LOW) dqiBand = 'AT_RISK'
-  else dqiBand = 'DEVELOPING'
+  const dqiBand = classifyDqiBand(dqiPct)
 
   return { dimensionRaw: raw, dimensionPct, deficient, dqiRaw, dqiPct, dqiBand }
 }

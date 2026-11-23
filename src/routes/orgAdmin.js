@@ -6,6 +6,7 @@ import { requireOrgAdmin } from '../middleware/requireOrgAdmin.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { rosterEntrySchema, formatZodError } from '../lib/validation.js'
 import { computePattern, DIMENSION_RAW_COLUMN, CAPACITY_NAME, classifyCapacityBand, capacityLine } from '../lib/scoring.js'
+import { getCohortReport } from '../lib/cohortReport.js'
 
 export const orgAdminRouter = Router()
 
@@ -247,6 +248,25 @@ orgAdminRouter.get('/participants/:id', asyncHandler(async (req, res) => {
       },
     },
   })
+}))
+
+// ---------------------------------------------------------------------------
+// GET /org-admin/cohort-report — the aggregate, anonymous group-level report
+// (UVAA_Cohort_Report_Spec_v1_1.docx). Unlike /participants above, this is
+// never about one person — see lib/cohortReport.js for the full privacy
+// rules (minimum group of 8, small-group vs. full view, small-count
+// suppression). `patternGrid` is deliberately stripped here even when the
+// builder computes it (cohort spec decision 5: "only the facilitator
+// does" — see routes/admin.js's matching facilitator-side route, which
+// keeps it).
+// ---------------------------------------------------------------------------
+orgAdminRouter.get('/cohort-report', asyncHandler(async (req, res) => {
+  const report = await getCohortReport(req.orgId)
+  if (!report) {
+    return res.status(404).json({ message: 'Organisation not found.' })
+  }
+  const { patternGrid, ...buyerReport } = report
+  return res.status(200).json(buyerReport)
 }))
 
 // ---------------------------------------------------------------------------

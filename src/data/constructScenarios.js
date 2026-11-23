@@ -44,7 +44,7 @@
 
 export const DIMENSION_LABELS = {
   UPEKSHA: { name: 'Emotional Balance', sanskrit: 'Upeksha' },
-  ANUVIGNA: { name: 'Pressure Non-Reactivity', sanskrit: 'Anuvigna' },
+  ANUVIGNA: { name: 'Pressure Non-Reactivity', sanskrit: 'Anudvigna' },
   ANASAKTI: { name: 'Detached Decision-Making', sanskrit: 'Anasakti' },
   VIVEKA: { name: 'Clarity in Complexity', sanskrit: 'Viveka' },
 }
