@@ -178,7 +178,7 @@ assessmentRouter.patch('/guna/draft', asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Could not save your progress.', errors: formatZodError(parsed.error) })
   }
 
-  const answers = parsed.data.answers.map((a) => ({ id: a.vignetteId, optionKey: a.optionKey }))
+  const answers = parsed.data.answers.map((a) => ({ vignetteId: a.vignetteId, optionKey: a.optionKey }))
   const { savedAt, restarted } = await saveDraft(req.user.sub, 'GUNA', answers, parsed.data.currentIndex)
   return res.status(200).json({ savedAt, restarted })
 }))
@@ -302,7 +302,7 @@ assessmentRouter.patch('/construct/draft', asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Could not save your progress.', errors: formatZodError(parsed.error) })
   }
 
-  const answers = parsed.data.answers.map((a) => ({ id: a.scenarioId, optionKey: a.optionKey }))
+  const answers = parsed.data.answers.map((a) => ({ scenarioId: a.scenarioId, optionKey: a.optionKey }))
   const { savedAt, restarted } = await saveDraft(req.user.sub, 'CONSTRUCT', answers, parsed.data.currentIndex)
   return res.status(200).json({ savedAt, restarted })
 }))
