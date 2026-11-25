@@ -8,6 +8,8 @@ import {
   constructSubmissionSchema,
   constructDraftSchema,
   formatZodError,
+  GUNA_VIGNETTE_IDS,
+  CONSTRUCT_SCENARIO_IDS,
 } from '../lib/validation.js'
 import {
   computeTpe,
@@ -34,6 +36,42 @@ assessmentRouter.use(requireAuth)
 // Screen Flow "INTERRUPTION" block / FR-17: a draft older than this (from
 // started_at, not last_saved_at) is discarded and the respondent restarts.
 const RESUME_WINDOW_HOURS = 72
+
+// Hardening for PATCH /guna/draft and /construct/draft: a draft resumed from
+// a row saved under an older, buggy build (or any other corrupted/legacy
+// entry) can carry an answer whose id isn't a real vignette/scenario id —
+// historically this was literally the string "undefined", from a since-fixed
+// field-name bug. gunaDraftSchema/constructDraftSchema validate the WHOLE
+// answers array in one shot, so a single bad entry used to fail the entire
+// save (silently, from the frontend's point of view) and permanently lock
+// the respondent out of ever saving progress again. Rather than trust every
+// draft payload to already be clean, we filter it ourselves before handing
+// it to the schema: drop anything with an unrecognised id or an invalid
+// optionKey, and de-duplicate by id (keeping the last occurrence) so a
+// repeated/legacy entry can't cause a superRefine "duplicate" failure either.
+const GUNA_VIGNETTE_ID_SET = new Set(GUNA_VIGNETTE_IDS)
+const GUNA_OPTION_KEYS = new Set(['A', 'B', 'C'])
+const CONSTRUCT_SCENARIO_ID_SET = new Set(CONSTRUCT_SCENARIO_IDS)
+const CONSTRUCT_OPTION_KEYS = new Set(['A', 'B', 'C', 'D'])
+
+// Pre-filters a raw draft-save body's `answers` array against a set of valid
+// ids and option keys, keyed by `idField` ('vignetteId' or 'scenarioId').
+// Non-array/missing `answers` is left as-is so the schema still reports the
+// right "answers is required" style error for a genuinely malformed request.
+function sanitizeDraftAnswers(body, idField, idSet, optionKeySet) {
+  if (!body || !Array.isArray(body.answers)) return body
+
+  const cleaned = new Map()
+  for (const a of body.answers) {
+    const id = a?.[idField]
+    const optionKey = a?.optionKey
+    if (typeof id !== 'string' || !idSet.has(id)) continue
+    if (typeof optionKey !== 'string' || !optionKeySet.has(optionKey)) continue
+    cleaned.set(id, { [idField]: id, optionKey }) // last occurrence of a duplicate id wins
+  }
+
+  return { ...body, answers: Array.from(cleaned.values()) }
+}
 
 function isExpired(startedAt) {
   return Date.now() - new Date(startedAt).getTime() > RESUME_WINDOW_HOURS * 60 * 60 * 1000
@@ -173,7 +211,8 @@ assessmentRouter.get('/guna/content', asyncHandler(async (req, res) => {
 assessmentRouter.patch('/guna/draft', asyncHandler(async (req, res) => {
   if (!(await requireBriefingAck(req, res))) return
 
-  const parsed = gunaDraftSchema.safeParse(req.body)
+  const sanitizedBody = sanitizeDraftAnswers(req.body, 'vignetteId', GUNA_VIGNETTE_ID_SET, GUNA_OPTION_KEYS)
+  const parsed = gunaDraftSchema.safeParse(sanitizedBody)
   if (!parsed.success) {
     return res.status(400).json({ message: 'Could not save your progress.', errors: formatZodError(parsed.error) })
   }
@@ -297,7 +336,8 @@ assessmentRouter.get('/construct/content', asyncHandler(async (req, res) => {
 assessmentRouter.patch('/construct/draft', asyncHandler(async (req, res) => {
   if (!(await requireGunaSubmitted(req, res))) return
 
-  const parsed = constructDraftSchema.safeParse(req.body)
+  const sanitizedBody = sanitizeDraftAnswers(req.body, 'scenarioId', CONSTRUCT_SCENARIO_ID_SET, CONSTRUCT_OPTION_KEYS)
+  const parsed = constructDraftSchema.safeParse(sanitizedBody)
   if (!parsed.success) {
     return res.status(400).json({ message: 'Could not save your progress.', errors: formatZodError(parsed.error) })
   }
