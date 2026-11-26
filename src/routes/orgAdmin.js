@@ -1,12 +1,14 @@
 import { Router } from 'express'
 import { parse } from 'csv-parse/sync'
 import { pool } from '../db.js'
+import { config } from '../config.js'
 import { requireAuth } from '../middleware/requireAuth.js'
 import { requireOrgAdmin } from '../middleware/requireOrgAdmin.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { rosterEntrySchema, formatZodError } from '../lib/validation.js'
 import { computePattern, DIMENSION_RAW_COLUMN, CAPACITY_NAME, classifyCapacityBand, capacityLine } from '../lib/scoring.js'
 import { getCohortReport } from '../lib/cohortReport.js'
+import { sendParticipantApprovedEmail } from '../lib/email.js'
 
 export const orgAdminRouter = Router()
 
@@ -282,17 +284,40 @@ orgAdminRouter.patch('/participants/:id/approve', asyncHandler(async (req, res) 
   }
   const newStatus = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
 
+  // Joins organisations for its name (for the approval email below) rather
+  // than a second round trip — req.orgId is already this admin's own org,
+  // set by requireOrgAdmin, so the join adds no new access.
   const result = await pool.query(
-    `UPDATE respondents SET approval_status = $1
-     WHERE respondent_id = $2 AND organisation_id = $3
-     RETURNING respondent_id, approval_status`,
+    `UPDATE respondents r SET approval_status = $1
+     FROM organisations o
+     WHERE r.respondent_id = $2 AND r.organisation_id = $3 AND o.org_id = r.organisation_id
+     RETURNING r.respondent_id, r.approval_status, r.full_name, r.email, o.name AS org_name`,
     [newStatus, req.params.id, req.orgId],
   )
   if (result.rowCount === 0) {
     return res.status(404).json({ message: 'Participant not found in your organisation.' })
   }
 
-  return res.status(200).json({ id: result.rows[0].respondent_id, approvalStatus: result.rows[0].approval_status })
+  const row = result.rows[0]
+
+  // Best-effort, same as every other transactional email here — a failed
+  // send must never fail the approval decision itself, which has already
+  // been committed by the UPDATE above. REJECT sends nothing; there's
+  // nothing to invite the participant to go do.
+  if (newStatus === 'APPROVED') {
+    try {
+      await sendParticipantApprovedEmail({
+        to: row.email,
+        fullName: row.full_name,
+        orgName: row.org_name,
+        loginUrl: `${config.frontendOrigins[0]}/login`,
+      })
+    } catch (err) {
+      console.error('Failed to send approval notice for', row.email, err)
+    }
+  }
+
+  return res.status(200).json({ id: row.respondent_id, approvalStatus: row.approval_status })
 }))
 
 // ---------------------------------------------------------------------------

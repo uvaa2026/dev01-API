@@ -3,7 +3,7 @@ import { pool, withTransaction } from '../db.js'
 import { config } from '../config.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { generateVerificationToken, hashToken, signSession } from '../lib/tokens.js'
-import { sendVerificationEmail, sendPasswordResetEmail } from '../lib/email.js'
+import { sendVerificationEmail, sendPasswordResetEmail, sendPendingApprovalEmail } from '../lib/email.js'
 import { normalizeCohortCode } from '../lib/cohortCode.js'
 import {
   registerSchema,
@@ -96,12 +96,12 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
     })
   }
 
-  let respondentId, rawToken
+  let respondentId, rawToken, approvalStatus, orgName, orgAdminEmail
   try {
-    ;({ respondentId, rawToken } = await withTransaction(async (client) => {
+    ;({ respondentId, rawToken, approvalStatus, orgName, orgAdminEmail } = await withTransaction(async (client) => {
       const orgResult = await client.query(
-        `SELECT org_id, email_domain, seat_count, seats_used, approval_mode, provisioning_model,
-                org_status, cohort_deadline_at
+        `SELECT org_id, name, admin_email, email_domain, seat_count, seats_used, approval_mode,
+                provisioning_model, org_status, cohort_deadline_at
          FROM organisations WHERE cohort_code = $1 FOR UPDATE`,
         [cohortCode],
       )
@@ -233,7 +233,13 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
         [newRespondentId, hash],
       )
 
-      return { respondentId: newRespondentId, rawToken: raw }
+      return {
+        respondentId: newRespondentId,
+        rawToken: raw,
+        approvalStatus,
+        orgName: org.name,
+        orgAdminEmail: org.admin_email,
+      }
     }))
   } catch (err) {
     if (err instanceof RegistrationRejected) {
@@ -257,6 +263,25 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
     console.error('Failed to send verification email for', data.email, err)
     // Account is created either way — the respondent can request a new
     // link once a "resend verification" endpoint exists.
+  }
+
+  // MANUAL-approval org: let the Org Admin know someone's waiting on them.
+  // Best-effort, same as the verification email above — a failed send here
+  // must never fail the registration itself; the respondent row already
+  // exists either way, the Admin will just have to notice it from the
+  // dashboard instead of their inbox.
+  if (approvalStatus === 'PENDING' && orgAdminEmail) {
+    try {
+      await sendPendingApprovalEmail({
+        to: orgAdminEmail,
+        orgName,
+        participantName: data.fullName,
+        participantEmail: data.email,
+        dashboardUrl: `${config.frontendOrigins[0]}/org-admin`,
+      })
+    } catch (err) {
+      console.error('Failed to send pending-approval notice for', data.email, 'to', orgAdminEmail, err)
+    }
   }
 
   return res.status(201).json({
